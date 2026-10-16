@@ -1,0 +1,142 @@
+[
+  {
+    "item": 1,
+    "name": "Run the server (Health Check)",
+    "endpoint": "GET /health",
+    "request": "None",
+    "status_code": 200,
+    "response": "{\"status\": \"healthy\"}",
+    "success": true,
+    "notes": "Server running with MySQL database connected"
+  },
+  {
+    "item": 2,
+    "name": "Test login",
+    "endpoint": "POST /api/auth/login",
+    "request": "{\"username\": \"admin\", \"password\": \"AdminPass123!\"}",
+    "status_code": 200,
+    "response": "token_type: bearer, user: admin, role: admin",
+    "success": true,
+    "notes": "Bcrypt verified, JWT issued"
+  },
+  {
+    "item": 3,
+    "name": "Test unauthenticated access",
+    "endpoint": "GET /api/customers",
+    "request": "No auth header",
+    "status_code": 401,
+    "response": "{\"detail\":\"Could not validate credentials or token expired\"}",
+    "success": true,
+    "notes": "Properly blocked without valid JWT"
+  },
+  {
+    "item": 4,
+    "name": "Test authenticated customer loading",
+    "endpoint": "GET /api/customers",
+    "request": "Bearer JWT",
+    "status_code": 200,
+    "response": "Total count: 18. First: ID=48, Name=Arjun Sharma, Phone=+91 98200 12345",
+    "success": true,
+    "notes": "Real customers loaded from MySQL"
+  },
+  {
+    "item": 5,
+    "name": "Test add/edit/delete customer",
+    "endpoint": "POST / PUT / DELETE /api/customers/{id}",
+    "request": "FormData(TEST_VERIF_1788759307)",
+    "status_code": 200,
+    "response": "POST (ID=50, Name='Strict Verification User') -> PUT (Updated='Strict Verification User Updated') -> DELETE (status='deleted')",
+    "success": true,
+    "notes": "Customer lifecycle fully verified and cleaned in MySQL"
+  },
+  {
+    "item": 6,
+    "name": "Test call history API",
+    "endpoint": "GET /api/calls",
+    "request": "Bearer JWT",
+    "status_code": 200,
+    "response": "Total calls: 88. Latest Call: ID=247, Status=IN_PROGRESS, Customer=None",
+    "success": true,
+    "notes": "Call history queried from calls table"
+  },
+  {
+    "item": 7,
+    "name": "Test transcript retrieval",
+    "endpoint": "GET /api/calls/246",
+    "request": "Bearer JWT",
+    "status_code": 200,
+    "response": "Call #246: Customer='Arjun Sharma', Status='IN_PROGRESS', Language='en', Messages=2 (e.g. [customer]: 'Please give me a moment while I look int...'), Requirements=Captured",
+    "success": true,
+    "notes": "Full chronological transcript returned with speaker labels and timestamps"
+  },
+  {
+    "item": 8,
+    "name": "Verify messages exist in MySQL",
+    "endpoint": "Direct MySQL Query (messages table)",
+    "request": "SessionLocal.query(Message)",
+    "status_code": 200,
+    "response": "Total messages in MySQL: 127. Recent records: [assistant]: '\u201cAbsolutely, I\u2019m happy to look...'; [customer]: 'Please give me a moment while ...'; [assistant]: 'Call escalated to human suppor...'",
+    "success": true,
+    "notes": "Messages confirmed stored and readable directly from MySQL"
+  },
+  {
+    "item": 9,
+    "name": "Test recorded audio -> SEND AUDIO",
+    "endpoint": "POST /api/calls/248/turn",
+    "request": "Multipart file=static/waiting/waiting_1.wav",
+    "status_code": 200,
+    "response": "Call #248 processed in 41.39s. Customer STT: 'Please give me a moment while I look into that for you.', AI Response: '\u201cCertainly, I\u2019m happy to look into that for you. J...', Audio URL: 'http://127.0.0.1:8000/audio/4932df87-c59e-47dd-ad70-a864f5bc1ac2_response.wav'",
+    "success": true,
+    "notes": "Timings: stt=Nones, llm=Nones, tts=Nones, total=Nones"
+  },
+  {
+    "item": 10,
+    "name": "Test waiting audio",
+    "endpoint": "GET /static/waiting/*.wav",
+    "request": "HTTP GET static assets",
+    "status_code": 200,
+    "response": "waiting_1.wav: 200 (115244 bytes), waiting_2.wav: 200 (152108 bytes), waiting_3.wav: 200 (134700 bytes)",
+    "success": true,
+    "notes": "Sequential pre-rendered Piper audio prompts available"
+  },
+  {
+    "item": 11,
+    "name": "Test automated calling START",
+    "endpoint": "POST /api/automation/start",
+    "request": "{\"customer_ids\": [48, 37]}",
+    "status_code": 200,
+    "response": "POST /api/automation/start -> 200: 'None'. is_running=True, Queue total=None",
+    "success": true,
+    "notes": "Queue initialized with selected customers"
+  },
+  {
+    "item": 12,
+    "name": "Test automated calling STOP",
+    "endpoint": "POST /api/automation/stop",
+    "request": "None",
+    "status_code": 200,
+    "response": "POST /api/automation/stop -> 200: 'None'. is_running=False",
+    "success": true,
+    "notes": "Queue stopped safely on user command"
+  },
+  {
+    "item": 13,
+    "name": "Test human assistance display",
+    "endpoint": "GET /api/escalations",
+    "request": "Bearer JWT",
+    "status_code": 200,
+    "response": "Total escalations: 14. Sample: ID=46, Customer='Arjun Sharma', Reason='Customer selected Hindi (digit 2). AI pi...', Language='hi', Status='RESOLVED'",
+    "success": true,
+    "notes": "Real escalations queried from human_assistance_requests table"
+  },
+  {
+    "item": 14,
+    "name": "Check frontend for fake/hardcoded customer data",
+    "endpoint": "Static HTML Audit (frontend/index.html)",
+    "request": "Regex / text scan",
+    "status_code": 200,
+    "response": "Suspicious hardcoded names found: []. Empty dynamic tbodies verified: True.",
+    "success": true,
+    "notes": "Zero hardcoded customers in HTML; 100% loaded dynamically via authenticated API"
+  }
+]

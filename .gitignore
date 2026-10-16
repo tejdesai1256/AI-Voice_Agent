@@ -1,0 +1,33 @@
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+.env.*
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Audio files
+audio/
+*.wav
+*.mp3
+*.ogg
+*.m4a
+*.flac
+
+# Recordings
+recordings/
+
+# Transcripts
+transcripts/
+
+# Large AI models — keep locally, don't upload to Git
+models/whisper-base/model.bin
+models/piper/en_US-lessac-medium.onnx
+
+# Local database
+voice_agent.db

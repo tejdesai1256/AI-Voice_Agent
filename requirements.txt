@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+pymysql
+python-dotenv
+python-multipart
+faster-whisper
+piper-tts
+edge-tts
+av
+httpx
+bcrypt
+pyjwt
