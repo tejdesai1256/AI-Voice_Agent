@@ -31,3 +31,7 @@ models/piper/en_US-lessac-medium.onnx
 
 # Local database
 voice_agent.db
+
+# Git backups & temporary files
+.git_backup/
+*.log
