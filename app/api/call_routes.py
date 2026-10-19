@@ -13,6 +13,7 @@ from app.services.requirement_service import RequirementService
 from app.database.database import get_db
 from app.database.models import Customer, Call, Message, Requirement, SystemUser
 from app.utils.auth import get_current_user
+from app.utils.audio_utils import convert_to_16k_mono_wav
 
 router = APIRouter()
 voice_service = VoiceResponseService()
@@ -619,20 +620,45 @@ async def add_turn(
             detail=f"Call with ID {call_id} has already ended or has been routed to human assistance.",
         )
 
-    os.makedirs(RECORDINGS_DIR, exist_ok=True)
-    ext = os.path.splitext(file.filename)[1] or ".wav"
+    ext = os.path.splitext(file.filename)[1].lower() if file.filename else ".wav"
+    allowed_exts = {".wav", ".webm", ".ogg", ".mp3", ".m4a", ".flac", ".aac"}
+    if ext not in allowed_exts and not (file.content_type and "audio" in file.content_type):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format '{ext}'. Please record or upload a valid audio file (.wav, .webm, .mp3, .ogg).",
+        )
+
     temp_filename = f"{uuid.uuid4()}{ext}"
     temp_path = os.path.join(RECORDINGS_DIR, temp_filename)
     output_filename = f"{uuid.uuid4()}_response.wav"
     output_path = os.path.join(GENERATED_AUDIO_DIR, output_filename)
 
+    converted_path = None
     try:
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
+        file_size = os.path.getsize(temp_path)
+        if file_size < 100:
+            raise HTTPException(
+                status_code=400,
+                detail="The recorded audio was empty or silent. Please speak into the microphone and try again.",
+            )
+        if file_size > 25 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400,
+                detail="Audio file size exceeds the 25MB limit.",
+            )
+
+        # Standardize audio container/sample rate to 16kHz mono WAV for Faster-Whisper
+        converted_path = convert_to_16k_mono_wav(temp_path)
+        active_audio_path = converted_path if (converted_path and os.path.exists(converted_path)) else temp_path
+
         # If call is awaiting language selection, handle speech-based language selection
         if call.status == "AWAITING_LANGUAGE":
-            transcript = voice_service.stt_service.transcribe(temp_path)
+            transcript = voice_service.stt_service.transcribe(active_audio_path)
+            if not transcript or not transcript.strip():
+                transcript = "[No clear speech detected]"
             t_lower = transcript.lower()
 
             if any(k in t_lower for k in ["2", "hindi", "हिन्दी"]):
@@ -679,7 +705,7 @@ async def add_turn(
         # Normal English AI Conversation Pipeline Turn
         result = await voice_service.process_existing_turn(
             call_id=call_id,
-            audio_path=temp_path,
+            audio_path=active_audio_path,
             output_audio_path=output_path,
             db=db,
         )
@@ -695,11 +721,12 @@ async def add_turn(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
+        for p in (temp_path, converted_path):
+            if p and os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
 
 
 @router.post("/calls/{call_id}/end")

@@ -136,6 +136,8 @@ class VoiceResponseService:
         # 5. Transcribe with Faster-Whisper
         stt_start = time.perf_counter()
         transcript = self.stt_service.transcribe(audio_path)
+        if not transcript or not transcript.strip():
+            transcript = "[No clear speech detected]"
         stt_time = time.perf_counter() - stt_start
 
         # 6. Save customer message

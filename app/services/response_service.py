@@ -13,6 +13,10 @@ class ResponseService:
         Generates a warm, professional, concise spoken response to the customer's input,
         leveraging conversation history and the Ollama LLM service.
         """
+        t_clean = transcript.strip() if transcript else ""
+        if not t_clean or t_clean in ("[No clear speech detected]", "[Inaudible]", "[Inaudible speech]"):
+            return "I couldn't hear you clearly. Could you please repeat that?"
+
         history_block = (
             f"Conversation History:\n{conversation_context.strip()}\n\n"
             if conversation_context and conversation_context.strip()
