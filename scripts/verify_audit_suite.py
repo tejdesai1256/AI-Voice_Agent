@@ -4,18 +4,33 @@ import time
 import httpx
 from datetime import datetime
 
+target_port = os.environ.get("PORT")
+if not target_port:
+    # Auto-detect whether 8001 or 8000 is active
+    for p in ["8001", "8000"]:
+        try:
+            test_r = httpx.get(f"http://127.0.0.1:{p}/health", timeout=1.0)
+            if test_r.status_code == 200:
+                target_port = p
+                break
+        except Exception:
+            continue
+    if not target_port:
+        target_port = "8001"
+
+BASE_URL = os.environ.get("BASE_URL", f"http://127.0.0.1:{target_port}")
+
 print("=========================================================")
-print("LIVE AUDIT SUITE: VERIFYING RUNNING SYSTEM AT PORT 8000")
+print(f"LIVE AUDIT SUITE: VERIFYING RUNNING SYSTEM AT {BASE_URL}")
 print("=========================================================")
 
-BASE_URL = "http://127.0.0.1:8000"
 client = httpx.Client(base_url=BASE_URL, timeout=120.0)
 
 # Check 1: Server and Health
 try:
     r = client.get("/health")
     assert r.status_code == 200 and r.json().get("status") == "healthy"
-    print("[PASS] 1. Uvicorn server is live and healthy on http://127.0.0.1:8000")
+    print(f"[PASS] 1. Uvicorn server is live and healthy on {BASE_URL}")
 except Exception as e:
     print(f"[FAIL] 1. Server health check failed: {e}")
     sys.exit(1)

@@ -39,7 +39,97 @@ class RequirementService:
         )
 
         raw_response = await generate_response(prompt, num_predict=250)
-        return self._parse_json_response(raw_response)
+        parsed = self._parse_json_response(raw_response)
+
+        # If LLM returned empty or null fields (e.g. when Ollama is offline or produces empty JSON),
+        # perform resilient heuristic regex extraction on the transcript so customer requirements are never lost.
+        has_val = any(parsed.get(k) is not None for k in ["requirements", "products_or_services", "quantity", "budget", "deadline"])
+        if not has_val and transcript and transcript.strip():
+            heuristics = self._heuristic_extract(transcript)
+            for k, v in heuristics.items():
+                if v and not parsed.get(k):
+                    parsed[k] = v
+
+        return parsed
+
+    def _heuristic_extract(self, transcript: str) -> dict:
+        """
+        Resilient heuristic extraction from raw transcript text when LLM extraction
+        fails or local Ollama is offline.
+        """
+        text = transcript.strip()
+        result = {
+            "requirements": None,
+            "products_or_services": None,
+            "quantity": None,
+            "budget": None,
+            "deadline": None,
+            "important_details": [],
+        }
+        if not text:
+            return result
+
+        # 1. Budget detection ($45,000, 50000 rupees, budget is 45000 dollars, etc.)
+        m_budget = re.search(
+            r'(?:budget(?:\s+is)?[:\s]*|cost[:\s]*|around[:\s]*|for[:\s]*)'
+            r'(\$?\d[\d,]*(?:\s*(?:dollars?|rupees?|inr|usd|lakhs?|crores?|k))?)',
+            text,
+            re.IGNORECASE,
+        )
+        if not m_budget:
+            m_budget = re.search(
+                r'(\$\d[\d,]*(?:\.\d+)?|\b\d[\d,]*\s*(?:dollars?|rupees?|inr|usd)\b)',
+                text,
+                re.IGNORECASE,
+            )
+        if m_budget:
+            b_val = m_budget.group(1).strip()
+            if b_val and any(c.isdigit() for c in b_val):
+                result["budget"] = b_val
+
+        # 2. Quantity detection (50 laptops, 10 units, 5 computers, etc.)
+        m_qty = re.search(
+            r'\b(\d+[\d,]*\s*(?:laptops?|desktops?|computers?|units?|items?|pcs?|pieces?|licenses?|seats?|users?|servers?))\b',
+            text,
+            re.IGNORECASE,
+        )
+        if not m_qty:
+            m_qty = re.search(r'\b(\d+[\d,]*)\s+(?:of\s+)?([a-zA-Z]+)', text, re.IGNORECASE)
+            if m_qty and m_qty.group(2).lower() not in ["dollars", "rupees", "inr", "usd", "months", "weeks", "days", "years", "hours"]:
+                result["quantity"] = f"{m_qty.group(1)} {m_qty.group(2)}"
+        else:
+            result["quantity"] = m_qty.group(1).strip()
+
+        # 3. Products / Services detection
+        m_prod = re.search(
+            r'\b((?:[a-zA-Z0-9\-]+\s+)?(?:laptops?|desktops?|computers?|servers?|e-commerce(?:\s+website)?|website|mobile\s+app|application|software|hardware|crm|erp)(?:\s+with\s+[^,.]+)?)\b',
+            text,
+            re.IGNORECASE,
+        )
+        if m_prod:
+            result["products_or_services"] = m_prod.group(1).strip()
+
+        # 4. Deadline detection (next month, two months, within 3 weeks, tomorrow, asap)
+        m_dl = re.search(
+            r'\b((?:next\s+(?:month|week|year))|(?:(?:in\s+)?\w+\s+(?:months?|weeks?|days?))|(?:within\s+[^,.]+)|tomorrow|asap|urgent)\b',
+            text,
+            re.IGNORECASE,
+        )
+        if m_dl:
+            result["deadline"] = m_dl.group(1).strip()
+
+        # 5. Summary
+        prod = result.get("products_or_services")
+        qty = result.get("quantity")
+        if prod and qty:
+            result["requirements"] = f"Customer requested {qty} of {prod}"
+        elif prod:
+            result["requirements"] = f"Customer requested {prod}"
+        elif len(text) > 5:
+            first_sent = text.split(".")[0].strip()
+            result["requirements"] = first_sent[:150]
+
+        return result
 
     def _parse_json_response(self, text: str) -> dict:
         """

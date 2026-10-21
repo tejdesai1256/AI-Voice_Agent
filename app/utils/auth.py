@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.database.models import SystemUser
 
-SECRET_KEY = os.getenv("SECRET_KEY", "ai-voice-calling-secret-key-2026-secure-session")
+_DEFAULT_SECRET = "ai-voice-calling-secret-key-2026-secure-session"
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    SECRET_KEY = _DEFAULT_SECRET
+    print(
+        "[Security Warning] SECRET_KEY not configured in .env. Using development fallback. "
+        "Define SECRET_KEY in .env before deploying to production!"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 

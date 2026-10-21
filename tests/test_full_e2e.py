@@ -112,7 +112,7 @@ def test_full_pipeline():
 
     stop_auto = client.post("/api/automation/stop", headers=headers)
     assert stop_auto.status_code == 200
-    print("[OK] 11. Phase 4 Automated Calling safely stopped by user")
+    print("[OK] 10. Phase 4 Automated Calling safely stopped by user")
 
     # Clean up test call so test does not leave artifacts in database
     from app.database.database import SessionLocal
@@ -130,7 +130,7 @@ def test_full_pipeline():
     client.close()
 
     print("\n==========================================")
-    print("ALL 11 END-TO-END PIPELINE TESTS PASSED!")
+    print("ALL 10 END-TO-END PIPELINE TESTS PASSED!")
     print("==========================================")
     sys.exit(0)
 

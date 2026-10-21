@@ -3,14 +3,17 @@ from app.services.requirement_service import RequirementService
 
 
 class CallService:
+    """
+    Lightweight STT-and-Requirement extraction pipeline.
+    NOTE: The full multi-turn voice calling pipeline is orchestrated by VoiceResponseService
+    (app/services/voice_response_service.py) which adds LLM generation, TTS synthesis,
+    DTMF language routing, and persistence.
+    """
     def __init__(
         self,
         stt_service: STTService = None,
         requirement_service: RequirementService = None,
     ):
-        """
-        Initializes CallService by reusing STTService and RequirementService.
-        """
         self.stt_service = stt_service if stt_service is not None else STTService()
         self.requirement_service = (
             requirement_service if requirement_service is not None else RequirementService()

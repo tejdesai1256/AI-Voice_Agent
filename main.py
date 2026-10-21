@@ -1,16 +1,18 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.services.llm_service import generate_response
 from app.database.database import Base, engine
+from app.database.models import SystemUser
 import app.database.models  # noqa: F401
 from app.api.auth_routes import router as auth_router
 from app.api.call_routes import router as call_router
 from app.api.automation_routes import router as automation_router
 from app.api.escalation_routes import router as escalation_router
+from app.utils.auth import get_current_user
 
 app = FastAPI(title="AI Voice Calling Platform", version="2.0.0")
 
@@ -73,7 +75,7 @@ def health_check():
 
 
 @app.post("/ai-test")
-async def ai_test(prompt: str):
+async def ai_test(prompt: str, current_user: SystemUser = Depends(get_current_user)):
     response = await generate_response(prompt)
     return {
         "prompt": prompt,
