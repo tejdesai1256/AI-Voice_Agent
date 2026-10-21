@@ -545,6 +545,17 @@
             box-shadow: none !important;
             opacity: 0.85;
         }
+        .btn-mic-speaking {
+            background: linear-gradient(135deg, #059669, #10b981) !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+            animation: pulse-speaking-ring 1.8s infinite;
+        }
+        @keyframes pulse-speaking-ring {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
         .recording-timer {
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             font-size: 0.85rem;
@@ -963,11 +974,14 @@
                             <span id="live-mic-error-text"></span>
                         </div>
 
-                        <!-- Modern Unified Microphone Button -->
-                        <div style="display: flex; gap: 0.75rem; justify-content: center; align-items: center; margin-bottom: 0.85rem;">
+                        <!-- Modern Unified Microphone Button & Cancel Control -->
+                        <div style="display: flex; gap: 0.75rem; justify-content: center; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap;">
                             <button type="button" id="live-btn-mic" class="btn-mic btn-mic-idle" onclick="toggleLiveSpeaking()">
                                 <span id="live-btn-mic-icon" style="font-size: 1.25rem;">🎙️</span>
                                 <span id="live-btn-mic-label">Start Speaking</span>
+                            </button>
+                            <button type="button" id="live-btn-cancel-rec" class="btn btn-secondary btn-sm hidden" onclick="cancelLiveRecording()" title="Cancel and discard recording">
+                                ✖ Cancel
                             </button>
                         </div>
 
@@ -1673,11 +1687,7 @@
                     document.getElementById('live-call-status-pill').className = 'badge badge-warning';
 
                     if (data.audio_url) {
-                        const audioPlayer = document.getElementById('live-ai-audio-player');
-                        audioPlayer.src = data.audio_url;
-                        audioPlayer.load();
-                        document.getElementById('live-ai-audio-card').classList.remove('hidden');
-                        audioPlayer.play().catch(e => console.log('Autoplay notice:', e));
+                        playAiAudioResponse(data.audio_url);
                     }
 
                     document.getElementById('live-rec-status-text').textContent = 'System prompting language selection. Press 1 (EN), 2 (HI), or 3 (MR) on keypad or keyboard.';
@@ -1690,11 +1700,7 @@
                     document.getElementById('live-call-status-pill').className = 'badge badge-warning';
 
                     if (data.audio_url) {
-                        const audioPlayer = document.getElementById('live-ai-audio-player');
-                        audioPlayer.src = data.audio_url;
-                        audioPlayer.load();
-                        document.getElementById('live-ai-audio-card').classList.remove('hidden');
-                        audioPlayer.play().catch(e => console.log('Autoplay notice:', e));
+                        playAiAudioResponse(data.audio_url);
                     }
 
                     document.getElementById('live-rec-status-text').textContent = 'Customer routed to Human Assistance. Voice conversation ended.';
@@ -1708,11 +1714,7 @@
                     document.getElementById('live-call-status-pill').textContent = 'ACTIVE CALL';
                     document.getElementById('live-call-status-pill').className = 'badge badge-success';
                     if (data.audio_url) {
-                        const audioPlayer = document.getElementById('live-ai-audio-player');
-                        audioPlayer.src = data.audio_url;
-                        audioPlayer.load();
-                        document.getElementById('live-ai-audio-card').classList.remove('hidden');
-                        audioPlayer.play().catch(e => console.log('Autoplay notice:', e));
+                        playAiAudioResponse(data.audio_url);
                     }
                 }
 
@@ -1753,11 +1755,7 @@
                     document.getElementById('live-call-status-pill').className = 'badge badge-warning';
 
                     if (data.audio_url) {
-                        const audioPlayer = document.getElementById('live-ai-audio-player');
-                        audioPlayer.src = data.audio_url;
-                        audioPlayer.load();
-                        document.getElementById('live-ai-audio-card').classList.remove('hidden');
-                        audioPlayer.play().catch(e => console.log('Autoplay notice:', e));
+                        playAiAudioResponse(data.audio_url);
                     }
 
                     document.getElementById('live-rec-status-text').textContent = 'Customer routed to Human Assistance. Voice conversation ended.';
@@ -1769,17 +1767,13 @@
                     renderLiveTranscript();
                     document.getElementById('live-call-status-pill').textContent = 'ACTIVE CALL';
                     document.getElementById('live-call-status-pill').className = 'badge badge-success';
-                    setMicButtonState('idle');
-                    document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
 
                     if (data.audio_url) {
-                        const audioPlayer = document.getElementById('live-ai-audio-player');
-                        audioPlayer.src = data.audio_url;
-                        audioPlayer.load();
-                        document.getElementById('live-ai-audio-card').classList.remove('hidden');
-                        audioPlayer.play().catch(e => console.log('Autoplay notice:', e));
+                        playAiAudioResponse(data.audio_url);
+                    } else {
+                        setMicButtonState('idle');
+                        document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
                     }
-                    resetLiveRecordingUI();
                 }
             } catch (err) {
                 alert(`Error selecting language: ${err.message}`);
@@ -1806,16 +1800,106 @@
             box.scrollTop = box.scrollHeight;
         }
 
+        // ---- Audio Resource & Object URL Manager ----
+        let currentPreviewObjectUrl = null;
+        let liveMicStream = null;
+
+        function setAudioPreviewUrl(blobOrFile) {
+            if (currentPreviewObjectUrl) {
+                URL.revokeObjectURL(currentPreviewObjectUrl);
+                currentPreviewObjectUrl = null;
+            }
+            const previewEl = document.getElementById('live-recorded-preview');
+            if (blobOrFile && previewEl) {
+                currentPreviewObjectUrl = URL.createObjectURL(blobOrFile);
+                previewEl.src = currentPreviewObjectUrl;
+            } else if (previewEl) {
+                previewEl.src = '';
+            }
+        }
+
+        function releaseMicStream() {
+            if (liveMicStream) {
+                try {
+                    liveMicStream.getTracks().forEach(t => t.stop());
+                } catch (e) {
+                    console.log('Error releasing mic track:', e);
+                }
+                liveMicStream = null;
+            }
+        }
+
+        function stopAllAudioPlayback() {
+            stopWaitingAudio();
+            const aiPlayer = document.getElementById('live-ai-audio-player');
+            if (aiPlayer) {
+                aiPlayer.pause();
+                aiPlayer.currentTime = 0;
+                aiPlayer.onplay = null;
+                aiPlayer.onended = null;
+                aiPlayer.onerror = null;
+            }
+            if (liveMicState === 'speaking') {
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+            }
+        }
+
+        function playAiAudioResponse(audioUrl, onEndedCallback) {
+            stopAllAudioPlayback();
+            const aiPlayer = document.getElementById('live-ai-audio-player');
+            if (!aiPlayer || !audioUrl) return;
+
+            aiPlayer.src = audioUrl;
+            aiPlayer.load();
+            document.getElementById('live-ai-audio-card').classList.remove('hidden');
+
+            setMicButtonState('speaking');
+            document.getElementById('live-rec-status-text').textContent = '🔊 AI Assistant is speaking... (Click to interrupt)';
+
+            aiPlayer.onplay = () => {
+                setMicButtonState('speaking');
+                document.getElementById('live-rec-status-text').textContent = '🔊 AI Assistant is speaking... (Click to interrupt)';
+            };
+
+            aiPlayer.onended = () => {
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+                if (onEndedCallback) onEndedCallback();
+            };
+
+            aiPlayer.onerror = (e) => {
+                console.error('Audio playback error:', e);
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+            };
+
+            aiPlayer.play().catch(e => {
+                console.log('Autoplay notice:', e);
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+            });
+        }
+
         // ---- Unified Mic Button State Manager ----
         function setMicButtonState(state) {
             const btn = document.getElementById('live-btn-mic');
             const icon = document.getElementById('live-btn-mic-icon');
             const label = document.getElementById('live-btn-mic-label');
+            const cancelBtn = document.getElementById('live-btn-cancel-rec');
             if (!btn) return;
 
             liveMicState = state;
             btn.disabled = false;
             btn.className = 'btn-mic';
+
+            if (cancelBtn) {
+                if (state === 'recording') {
+                    cancelBtn.classList.remove('hidden');
+                } else {
+                    cancelBtn.classList.add('hidden');
+                }
+            }
 
             switch (state) {
                 case 'idle':
@@ -1833,6 +1917,11 @@
                     icon.textContent = '⏳';
                     label.textContent = 'Processing...';
                     btn.disabled = true;
+                    break;
+                case 'speaking':
+                    btn.classList.add('btn-mic-speaking');
+                    icon.textContent = '🔊';
+                    label.textContent = 'AI Speaking... (Click to talk)';
                     break;
                 case 'disabled':
                     btn.classList.add('btn-mic-processing');
@@ -1873,8 +1962,15 @@
             }
             if (liveMicState === 'processing') return;
 
+            // If assistant is speaking, clicking button interrupts playback and transitions to speaking
+            if (liveMicState === 'speaking') {
+                stopAllAudioPlayback();
+                await startLiveRecording();
+                return;
+            }
+
             if (liveMicState === 'recording') {
-                // Stop recording
+                // Stop recording and submit
                 stopLiveRecording();
                 return;
             }
@@ -1888,14 +1984,20 @@
             const text = document.getElementById('live-mic-error-text');
             text.textContent = msg;
             banner.classList.remove('hidden');
-            setTimeout(() => banner.classList.add('hidden'), 6000);
+            setTimeout(() => banner.classList.add('hidden'), 7000);
         }
 
         async function startLiveRecording() {
             if (!activeLiveCall) return;
+            if (liveMicState === 'processing') return;
+
+            // Ensure any ongoing audio playback is stopped
+            stopAllAudioPlayback();
+
             try {
                 liveAudioChunks = [];
                 liveAudioFile = null;
+                setAudioPreviewUrl(null);
                 document.getElementById('live-audio-ready-section').classList.add('hidden');
                 document.getElementById('live-mic-error-banner').classList.add('hidden');
 
@@ -1907,6 +2009,7 @@
                         channelCount: 1,
                     }
                 });
+                liveMicStream = stream;
 
                 // Detect supported MIME type for MediaRecorder
                 const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -1920,21 +2023,26 @@
                     : new MediaRecorder(stream);
 
                 liveMediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) liveAudioChunks.push(e.data);
+                    if (e.data && e.data.size > 0) liveAudioChunks.push(e.data);
                 };
 
                 liveMediaRecorder.onstop = () => {
                     stopRecordingTimer();
+                    releaseMicStream();
+
+                    const totalBytes = liveAudioChunks.reduce((acc, c) => acc + c.size, 0);
+                    if (liveAudioChunks.length === 0 || totalBytes < 150) {
+                        showMicError('Recording was empty or too short. Please speak clearly into your microphone.');
+                        resetLiveRecordingUI();
+                        return;
+                    }
+
                     const ext = (liveMediaRecorder.mimeType || '').includes('webm') ? 'webm' : 'wav';
                     const blobType = ext === 'webm' ? 'audio/webm' : 'audio/wav';
                     const audioBlob = new Blob(liveAudioChunks, { type: blobType });
                     liveAudioFile = new File([audioBlob], `speech_${Date.now()}.${ext}`, { type: blobType });
 
-                    const previewUrl = URL.createObjectURL(audioBlob);
-                    document.getElementById('live-recorded-preview').src = previewUrl;
-
-                    // Release mic stream tracks
-                    stream.getTracks().forEach(t => t.stop());
+                    setAudioPreviewUrl(audioBlob);
 
                     // Auto-send: immediately submit the audio to the backend
                     setMicButtonState('processing');
@@ -1943,13 +2051,14 @@
                     submitLiveRecordedAudio();
                 };
 
-                liveMediaRecorder.start(250); // collect data every 250ms for smoother chunks
+                liveMediaRecorder.start(250); // collect data every 250ms
                 document.getElementById('live-rec-dot').classList.remove('hidden');
                 document.getElementById('live-rec-status-text').textContent = '🔴 Recording... Speak now, then click "Stop Speaking"';
                 setMicButtonState('recording');
                 startRecordingTimer();
             } catch (err) {
                 console.error('Microphone error:', err);
+                releaseMicStream();
                 let errorMsg = `Microphone access failed: ${err.message}`;
                 if (err.name === 'NotAllowedError') {
                     errorMsg = '🔒 Microphone permission denied. Please allow microphone access in your browser settings and try again.';
@@ -1970,6 +2079,21 @@
             }
         }
 
+        function cancelLiveRecording() {
+            if (liveMediaRecorder && liveMediaRecorder.state !== 'inactive') {
+                liveMediaRecorder.onstop = null; // Discard onstop auto-submit
+                try { liveMediaRecorder.stop(); } catch (e) {}
+            }
+            releaseMicStream();
+            stopRecordingTimer();
+            liveAudioChunks = [];
+            liveAudioFile = null;
+            setAudioPreviewUrl(null);
+            document.getElementById('live-rec-dot').classList.add('hidden');
+            document.getElementById('live-rec-status-text').textContent = 'Recording cancelled. Click "Start Speaking" when ready.';
+            setMicButtonState('idle');
+        }
+
         // Alias: the "Process Selected Audio File" button calls this
         function submitLiveAudioFile() {
             submitLiveRecordedAudio();
@@ -1979,7 +2103,7 @@
             const file = e.target.files[0];
             if (file) {
                 liveAudioFile = file;
-                document.getElementById('live-recorded-preview').src = URL.createObjectURL(file);
+                setAudioPreviewUrl(file);
                 document.getElementById('live-audio-ready-section').classList.remove('hidden');
                 document.getElementById('live-rec-status-text').textContent = `Selected file: ${file.name}`;
             }
@@ -1988,12 +2112,15 @@
         function resetLiveRecordingUI() {
             liveAudioChunks = [];
             liveAudioFile = null;
+            releaseMicStream();
+            setAudioPreviewUrl(null);
             stopRecordingTimer();
             document.getElementById('live-rec-dot').classList.add('hidden');
             document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
             setMicButtonState('idle');
             document.getElementById('live-audio-ready-section').classList.add('hidden');
-            document.getElementById('live-manual-audio-file').value = '';
+            const fileInput = document.getElementById('live-manual-audio-file');
+            if (fileInput) fileInput.value = '';
             document.getElementById('live-call-timing-badge').classList.add('hidden');
             document.getElementById('live-mic-error-banner').classList.add('hidden');
             stopWaitingAudio();
@@ -2023,7 +2150,6 @@
             player.onended = () => {
                 currentWaitingClipIndex++;
                 if (isProcessingTurn) {
-                    // Natural pause of 2.0 seconds between waiting clips
                     setTimeout(() => {
                         if (isProcessingTurn) {
                             playSequentialWaitingAudio();
@@ -2041,14 +2167,17 @@
             }
             const banner = document.getElementById('live-waiting-audio-banner');
             const player = document.getElementById('live-waiting-audio-player');
-            banner.classList.add('hidden');
-            player.pause();
-            player.currentTime = 0;
-            player.onended = null;
+            if (banner) banner.classList.add('hidden');
+            if (player) {
+                player.pause();
+                player.currentTime = 0;
+                player.onended = null;
+            }
         }
 
         async function submitLiveRecordedAudio() {
             if (!activeLiveCall || !liveAudioFile) return;
+            if (isProcessingTurn) return; // Prevent duplicate concurrent requests
 
             const sendBtn = document.getElementById('live-btn-send-audio');
             sendBtn.disabled = true;
@@ -2085,28 +2214,37 @@
                     document.getElementById('live-call-status-pill').className = 'badge badge-danger';
                 }
 
-                if (data.audio_url) {
-                    const audioPlayer = document.getElementById('live-ai-audio-player');
-                    audioPlayer.src = data.audio_url;
-                    audioPlayer.load();
-                    document.getElementById('live-ai-audio-card').classList.remove('hidden');
-                    audioPlayer.play().catch(e => console.log('Autoplay notice:', e));
-                }
-
                 if (data.timings) {
                     const tBadge = document.getElementById('live-call-timing-badge');
                     tBadge.textContent = `Delivered in ${data.timings.total_sec}s`;
                     tBadge.classList.remove('hidden');
                 }
 
-                resetLiveRecordingUI();
+                // Reset recorded file UI
+                liveAudioChunks = [];
+                liveAudioFile = null;
+                document.getElementById('live-audio-ready-section').classList.add('hidden');
+                const fileInput = document.getElementById('live-manual-audio-file');
+                if (fileInput) fileInput.value = '';
+
+                // Handle AI audio response playback and speaking state
+                if (data.audio_url) {
+                    playAiAudioResponse(data.audio_url);
+                } else {
+                    setMicButtonState('idle');
+                    document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+                }
             } catch (err) {
                 stopWaitingAudio();
-                alert(`Error: ${err.message}`);
+                showMicError(`Voice turn failed: ${err.message}`);
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Turn failed. Click "Start Speaking" to try again.';
             } finally {
                 sendBtn.disabled = false;
                 sendBtn.textContent = '🚀 Process Selected Audio File';
-                setMicButtonState('idle');
+                if (liveMicState === 'processing') {
+                    setMicButtonState('idle');
+                }
             }
         }
 
@@ -2118,6 +2256,7 @@
                     headers: authHeaders()
                 });
                 stopLiveRecording();
+                stopAllAudioPlayback();
                 resetLiveRecordingUI();
                 setMicButtonState('disabled');
                 document.getElementById('live-rec-status-text').textContent = 'Call ended. Select a customer and start a call to resume voice interaction.';

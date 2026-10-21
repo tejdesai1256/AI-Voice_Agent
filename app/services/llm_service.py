@@ -46,7 +46,7 @@ async def generate_response(prompt: str, num_predict: int = 45, model: str = Non
         "options": {
             "num_predict": num_predict,
             "temperature": 0.7,
-            "num_gpu": 0,
+            "num_ctx": 2048,
         },
     }
 

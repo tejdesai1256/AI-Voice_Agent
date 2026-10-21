@@ -179,5 +179,10 @@ def run_full_13_regression_suite():
     print("========================================================\n")
 
 
+def test_full_regression_suite():
+    """Pytest-discoverable wrapper for the 13-point mandatory regression suite."""
+    run_full_13_regression_suite()
+
+
 if __name__ == "__main__":
     run_full_13_regression_suite()

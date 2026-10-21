@@ -15,8 +15,9 @@ class ConversationContextService:
             return ""
 
         context_parts = []
+        recent_calls = calls[-5:] if len(calls) > 5 else calls
 
-        for index, call in enumerate(calls, start=1):
+        for index, call in enumerate(recent_calls, start=1):
             if not call.messages:
                 continue
 

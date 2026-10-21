@@ -7,8 +7,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import app
 from app.database.database import SessionLocal
 from app.database.models import HumanAssistanceRequest, Call, Message, Requirement
+import httpx
 
-client = TestClient(app)
+try:
+    _live = httpx.get("http://127.0.0.1:8001/health", timeout=1.0)
+    if _live.status_code == 200:
+        client = httpx.Client(base_url="http://127.0.0.1:8001", timeout=120.0)
+    else:
+        from main import app
+        client = TestClient(app)
+except Exception:
+    from main import app
+    client = TestClient(app)
 
 def run_real_runtime_verification():
     print("\n========================================================")

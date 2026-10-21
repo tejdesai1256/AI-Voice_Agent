@@ -5,10 +5,19 @@ from fastapi.testclient import TestClient
 # Ensure root on sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import app
+import httpx
 from scripts.create_admin import create_or_update_admin
 
-client = TestClient(app)
+try:
+    _live = httpx.get("http://127.0.0.1:8001/health", timeout=1.0)
+    if _live.status_code == 200:
+        client = httpx.Client(base_url="http://127.0.0.1:8001", timeout=30.0)
+    else:
+        from main import app
+        client = TestClient(app)
+except Exception:
+    from main import app
+    client = TestClient(app)
 
 
 def test_complete_backend():
