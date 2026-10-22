@@ -45,6 +45,14 @@ class Call(Base):
     started_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     ended_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Telephony integration fields
+    provider = Column(String(50), default="web", nullable=True)
+    provider_call_id = Column(String(255), index=True, nullable=True)
+    caller_phone = Column(String(50), nullable=True)
+    destination_phone = Column(String(50), nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    error_code = Column(String(100), nullable=True)
+
     # Relationships
     customer = relationship("Customer", back_populates="calls")
     messages = relationship("Message", back_populates="call", cascade="all, delete-orphan")

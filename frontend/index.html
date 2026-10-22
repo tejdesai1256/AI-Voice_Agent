@@ -728,6 +728,7 @@
                 <span>🆘 Human Assistance</span>
                 <span class="badge badge-danger" id="nav-escalation-count">0</span>
             </button>
+            <button class="nav-btn" id="tab-telephony" onclick="navigate('telephony')">📱 Telephony</button>
             
             <div class="user-nav-box">
                 <div class="user-pill">
@@ -1126,6 +1127,123 @@
                     <div class="empty-title">All clear! No pending assistance requests</div>
                     <div class="empty-text">When a customer needs human assistance or selects Hindi/Marathi, requests appear here immediately with one-click callback.</div>
                 </div>
+        <!-- ========================================== -->
+        <!-- VIEW: TELEPHONY INTEGRATION (PHASE 9)       -->
+        <!-- ========================================== -->
+        <section id="view-telephony" class="hidden">
+            <!-- Telephony Gateway Status Header -->
+            <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(to right, #ffffff, var(--primary-light));">
+                <div class="card-header" style="margin-bottom: 0.5rem;">
+                    <div>
+                        <h2 class="card-title" style="display: flex; align-items: center; gap: 0.6rem;">
+                            <span>📱 Telephony Gateway & Real-Time Call Operations</span>
+                            <span class="badge badge-primary" id="telephony-provider-badge">Mock Mode</span>
+                        </h2>
+                        <p class="card-subtitle">Connect phone calls directly into the AI Voice Agent via PSTN/Mobile carrier network.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                        <span class="badge badge-gray" id="telephony-concurrency-badge">Active Calls: 0 / 5</span>
+                        <span class="badge badge-gray" id="telephony-limit-badge">Max Duration: 600s</span>
+                        <button class="btn btn-secondary btn-sm" onclick="loadTelephonyView()">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div id="telephony-provider-warning" class="hidden" style="margin-top: 0.75rem; background: var(--warning-light); border: 1px solid var(--warning-border); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; font-size: 0.8rem; color: var(--warning);">
+                    ⚠️ Provider credentials pending: Currently operating in safe Mock Simulation mode. Real PSTN calls require EXOTEL_ACCOUNT_SID and API keys in .env.
+                </div>
+            </div>
+
+            <!-- Outbound Dialing Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">📞 Make an Outbound Telephone Call</h3>
+                        <p class="card-subtitle">Dial an Indian or international phone number to bridge the caller into the AI voice agent.</p>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: flex-end;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="telephony-dial-phone">Destination Phone Number <span style="color: var(--danger);">*</span></label>
+                        <input type="tel" id="telephony-dial-phone" class="form-control" placeholder="+91 98765 43210 or 9876543210" autocomplete="tel">
+                        <small style="color: var(--text-muted); font-size: 0.75rem;">Accepts 10-digit Indian numbers or E.164 (+91...)</small>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="telephony-customer-select">Select Existing Customer (Optional)</label>
+                        <select id="telephony-customer-select" class="form-control" onchange="onTelephonyCustomerSelected()">
+                            <option value="">-- Manual Entry / New Customer --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="telephony-dial-name">Customer Name (Optional)</label>
+                        <input type="text" id="telephony-dial-name" class="form-control" placeholder="e.g. Rahul Sharma">
+                    </div>
+                </div>
+                <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; align-items: center;">
+                    <button id="btn-dial-telephony" class="btn btn-primary" onclick="initiateTelephonyCall()">
+                        <span>📞 Dial Phone Call</span>
+                    </button>
+                    <span id="telephony-dial-msg" style="font-size: 0.825rem; font-weight: 600;"></span>
+                </div>
+            </div>
+
+            <!-- Active Call Live Monitor Card -->
+            <div id="telephony-active-card" class="card hidden" style="border: 2px solid var(--primary); background: #ffffff;">
+                <div class="card-header">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="live-dot"></span>
+                        <h3 class="card-title" style="color: var(--primary);">Active Telephone Call</h3>
+                        <span class="badge badge-warning" id="telephony-active-status">QUEUED</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="recording-timer" id="telephony-active-timer">00:00</span>
+                        <button id="btn-hangup-telephony" class="btn btn-danger btn-sm" onclick="hangupCurrentTelephonyCall()">
+                            🛑 Hang Up Call
+                        </button>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; font-size: 0.85rem; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div><strong>Call ID:</strong> <span id="telephony-active-id">#0</span></div>
+                    <div><strong>Destination Phone:</strong> <span id="telephony-active-phone">-</span></div>
+                    <div><strong>Provider Call SID:</strong> <span id="telephony-active-sid">-</span></div>
+                    <div><strong>Language Routing:</strong> <span id="telephony-active-lang">Pending IVR</span></div>
+                </div>
+                <div style="margin-top: 1rem; padding: 0.75rem; background: var(--primary-light); border: 1px solid var(--primary-border); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--primary);">
+                    🎙️ <strong>Live Audio Stream Active:</strong> Caller audio is streamed bidirectionally via AgentStream media WebSocket with real-time VAD turn detection and barge-in support.
+                </div>
+            </div>
+
+            <!-- Telephony Call History Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">📜 Telephony Call History</h3>
+                        <p class="card-subtitle">Inbound and outbound telephone calls handled by the platform.</p>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadTelephonyHistory()">🔄 Refresh History</button>
+                </div>
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Call ID</th>
+                                <th>Direction</th>
+                                <th>Provider</th>
+                                <th>Phone Number</th>
+                                <th>Status</th>
+                                <th>Duration</th>
+                                <th>Started At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="telephony-history-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="telephony-history-empty" class="empty-state hidden">
+                    <div class="empty-icon">📱</div>
+                    <div class="empty-title">No telephony calls yet</div>
+                    <div class="empty-text">Use the dialer above to initiate an outbound phone call.</div>
+                </div>
             </div>
         </section>
 
@@ -1334,7 +1452,7 @@
         function showLogin() {
             document.getElementById('authenticated-nav').classList.add('hidden');
             document.getElementById('view-login').classList.remove('hidden');
-            ['customers', 'history', 'live-call', 'automation', 'escalations'].forEach(v => {
+            ['customers', 'history', 'live-call', 'automation', 'escalations', 'telephony'].forEach(v => {
                 const sec = document.getElementById(`view-${v}`);
                 if (sec) sec.classList.add('hidden');
             });
@@ -1345,6 +1463,7 @@
             authToken = null;
             currentUser = null;
             clearInterval(autoPollingInterval);
+            clearInterval(telephonyPollingInterval);
             showLogin();
         }
 
@@ -1387,7 +1506,7 @@
         });
 
         function navigate(viewName) {
-            ['customers', 'history', 'live-call', 'automation', 'escalations'].forEach(v => {
+            ['customers', 'history', 'live-call', 'automation', 'escalations', 'telephony'].forEach(v => {
                 const sec = document.getElementById(`view-${v}`);
                 const btn = document.getElementById(`tab-${v}`);
                 if (sec) sec.classList.toggle('hidden', v !== viewName);
@@ -1399,6 +1518,7 @@
             if (viewName === 'live-call') populateLiveCallDropdown();
             if (viewName === 'automation') initAutomationView();
             if (viewName === 'escalations') loadEscalations();
+            if (viewName === 'telephony') loadTelephonyView();
         }
 
         // ==========================================
@@ -2661,6 +2781,272 @@
                 }
             }
         });
+
+        // ==========================================
+        // TELEPHONY LOGIC (PHASE 9)
+        // ==========================================
+        let telephonyPollingInterval = null;
+        let activeTelephonyCallId = null;
+        let telephonyStartTime = null;
+        let telephonyTimerInterval = null;
+
+        async function loadTelephonyView() {
+            populateTelephonyCustomerDropdown();
+            await fetchTelephonyStatus();
+            await loadTelephonyHistory();
+        }
+
+        async function fetchTelephonyStatus() {
+            try {
+                const res = await fetch('/api/telephony/status', { headers: authHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const badge = document.getElementById('telephony-provider-badge');
+                const warn = document.getElementById('telephony-provider-warning');
+                const conc = document.getElementById('telephony-concurrency-badge');
+                const limit = document.getElementById('telephony-limit-badge');
+
+                if (data.active_provider === 'exotel') {
+                    badge.textContent = data.is_provider_configured ? 'Exotel Connected' : 'Exotel (Setup Required)';
+                    badge.className = data.is_provider_configured ? 'badge badge-success' : 'badge badge-warning';
+                    if (!data.is_provider_configured) warn.classList.remove('hidden');
+                    else warn.classList.add('hidden');
+                } else {
+                    badge.textContent = 'Mock Mode (Dev)';
+                    badge.className = 'badge badge-primary';
+                    warn.classList.remove('hidden');
+                    warn.innerHTML = 'ℹ️ <strong>Mock Provider Active:</strong> Calls are simulated safely without incurring telecom charges. To use real telephone lines, configure EXOTEL credentials in <code>.env</code>.';
+                }
+
+                conc.textContent = `Active Calls: ${data.active_call_count} / ${data.max_concurrent_calls}`;
+                limit.textContent = `Max Duration: ${data.max_call_duration_seconds}s`;
+            } catch (err) {
+                console.warn('Failed to load telephony status:', err);
+            }
+        }
+
+        function populateTelephonyCustomerDropdown() {
+            const select = document.getElementById('telephony-customer-select');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- Manual Entry / New Customer --</option>';
+            allCustomers.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${c.name || 'Unnamed'} (${c.phone || c.external_customer_id})`;
+                opt.dataset.phone = c.phone || '';
+                opt.dataset.name = c.name || '';
+                select.appendChild(opt);
+            });
+        }
+
+        function onTelephonyCustomerSelected() {
+            const select = document.getElementById('telephony-customer-select');
+            const selectedOpt = select.options[select.selectedIndex];
+            if (selectedOpt && selectedOpt.value) {
+                document.getElementById('telephony-dial-phone').value = selectedOpt.dataset.phone || '';
+                document.getElementById('telephony-dial-name').value = selectedOpt.dataset.name || '';
+            }
+        }
+
+        async function initiateTelephonyCall() {
+            const phoneInput = document.getElementById('telephony-dial-phone');
+            const nameInput = document.getElementById('telephony-dial-name');
+            const selectCust = document.getElementById('telephony-customer-select');
+            const dialBtn = document.getElementById('btn-dial-telephony');
+            const msgSpan = document.getElementById('telephony-dial-msg');
+
+            const phone = phoneInput.value.trim();
+            if (!phone || phone.length < 10) {
+                msgSpan.style.color = 'var(--danger)';
+                msgSpan.textContent = 'Please enter a valid phone number (at least 10 digits).';
+                return;
+            }
+
+            dialBtn.disabled = true;
+            dialBtn.innerHTML = '<span>⏳ Connecting...</span>';
+            msgSpan.style.color = 'var(--text-muted)';
+            msgSpan.textContent = 'Submitting outbound call request...';
+
+            try {
+                const res = await fetch('/api/telephony/outbound', {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone_number: phone,
+                        customer_id: selectCust.value ? parseInt(selectCust.value) : null,
+                        customer_name: nameInput.value.trim() || null
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Call initiation failed');
+
+                msgSpan.style.color = 'var(--success)';
+                msgSpan.textContent = `✓ Call initiated (ID: #${data.call_id}). Connecting...`;
+                showToast(`✓ Outbound call initiated to ${data.destination}`);
+
+                showActiveTelephonyCard(data.call_id, data.destination, data.call_sid);
+                loadTelephonyHistory();
+            } catch (err) {
+                msgSpan.style.color = 'var(--danger)';
+                msgSpan.textContent = `Error: ${err.message}`;
+            } finally {
+                dialBtn.disabled = false;
+                dialBtn.innerHTML = '<span>📞 Dial Phone Call</span>';
+            }
+        }
+
+        function showActiveTelephonyCard(callId, destination, callSid) {
+            activeTelephonyCallId = callId;
+            telephonyStartTime = Date.now();
+
+            const card = document.getElementById('telephony-active-card');
+            card.classList.remove('hidden');
+            document.getElementById('telephony-active-id').textContent = `#${callId}`;
+            document.getElementById('telephony-active-phone').textContent = destination;
+            document.getElementById('telephony-active-sid').textContent = callSid || 'Pending';
+            document.getElementById('telephony-active-status').textContent = 'QUEUED';
+            document.getElementById('telephony-active-status').className = 'badge badge-warning';
+
+            clearInterval(telephonyTimerInterval);
+            telephonyTimerInterval = setInterval(updateTelephonyTimer, 1000);
+
+            clearInterval(telephonyPollingInterval);
+            telephonyPollingInterval = setInterval(() => pollTelephonyStatus(callId), 2500);
+        }
+
+        function updateTelephonyTimer() {
+            if (!telephonyStartTime) return;
+            const elapsed = Math.floor((Date.now() - telephonyStartTime) / 1000);
+            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const secs = String(elapsed % 60).padStart(2, '0');
+            document.getElementById('telephony-active-timer').textContent = `${mins}:${secs}`;
+        }
+
+        async function pollTelephonyStatus(callId) {
+            try {
+                const res = await fetch(`/api/calls/${callId}`, { headers: authHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                const call = data.call;
+
+                const statusBadge = document.getElementById('telephony-active-status');
+                const langSpan = document.getElementById('telephony-active-lang');
+
+                if (call.language) {
+                    langSpan.textContent = call.language;
+                }
+
+                const s = (call.status || '').toLowerCase();
+                statusBadge.textContent = call.status.toUpperCase();
+
+                if (['in_progress', 'answered'].includes(s)) {
+                    statusBadge.className = 'badge badge-success';
+                } else if (['ringing', 'queued', 'awaiting_language'].includes(s)) {
+                    statusBadge.className = 'badge badge-warning';
+                } else if (['completed', 'resolved'].includes(s)) {
+                    statusBadge.className = 'badge badge-primary';
+                    stopActiveTelephonySession('Call Completed');
+                } else if (['failed', 'canceled', 'busy', 'no_answer'].includes(s)) {
+                    statusBadge.className = 'badge badge-danger';
+                    stopActiveTelephonySession('Call Terminated');
+                } else if (['escalated', 'human_transferred'].includes(s)) {
+                    statusBadge.className = 'badge badge-danger';
+                    langSpan.textContent = `${call.language} (Transferred to Human Assistance)`;
+                    stopActiveTelephonySession('Transferred to Human Assistance');
+                }
+            } catch (err) {
+                console.warn('Telephony polling error:', err);
+            }
+        }
+
+        function stopActiveTelephonySession(reason) {
+            clearInterval(telephonyPollingInterval);
+            clearInterval(telephonyTimerInterval);
+            telephonyPollingInterval = null;
+            telephonyTimerInterval = null;
+            activeTelephonyCallId = null;
+
+            setTimeout(() => {
+                const card = document.getElementById('telephony-active-card');
+                if (card) card.classList.add('hidden');
+                loadTelephonyHistory();
+                fetchTelephonyStatus();
+            }, 3000);
+
+            showToast(`ℹ️ Telephony: ${reason}`);
+        }
+
+        async function hangupCurrentTelephonyCall() {
+            if (!activeTelephonyCallId) return;
+            const btn = document.getElementById('btn-hangup-telephony');
+            btn.disabled = true;
+            btn.textContent = 'Hanging up...';
+
+            try {
+                const res = await fetch(`/api/telephony/calls/${activeTelephonyCallId}/hangup`, {
+                    method: 'POST',
+                    headers: authHeaders()
+                });
+                if (!res.ok) throw new Error('Hang up failed');
+                stopActiveTelephonySession('Call Ended by User');
+            } catch (err) {
+                alert(`Error ending call: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🛑 Hang Up Call';
+            }
+        }
+
+        async function loadTelephonyHistory() {
+            try {
+                const res = await fetch('/api/telephony/calls', { headers: authHeaders() });
+                if (!res.ok) return;
+                const calls = await res.json();
+
+                const tbody = document.getElementById('telephony-history-tbody');
+                const empty = document.getElementById('telephony-history-empty');
+
+                tbody.innerHTML = '';
+                if (!calls || calls.length === 0) {
+                    empty.classList.remove('hidden');
+                    return;
+                }
+                empty.classList.add('hidden');
+
+                calls.forEach(c => {
+                    const tr = document.createElement('tr');
+                    const phone = c.destination_phone || c.caller_phone || 'N/A';
+                    const dur = c.duration_seconds != null ? `${c.duration_seconds}s` : '-';
+                    const dt = c.started_at ? new Date(c.started_at).toLocaleString() : '-';
+
+                    let badgeClass = 'badge-gray';
+                    const st = (c.status || '').toLowerCase();
+                    if (['in_progress', 'answered'].includes(st)) badgeClass = 'badge-success';
+                    else if (['queued', 'ringing'].includes(st)) badgeClass = 'badge-warning';
+                    else if (['completed', 'resolved'].includes(st)) badgeClass = 'badge-primary';
+                    else if (['failed', 'canceled', 'busy', 'no_answer'].includes(st)) badgeClass = 'badge-danger';
+                    else if (['escalated', 'human_transferred'].includes(st)) badgeClass = 'badge-danger';
+
+                    tr.innerHTML = `
+                        <td><strong>#${c.id}</strong></td>
+                        <td><span class="badge ${c.call_type === 'OUTBOUND' ? 'badge-primary' : 'badge-warning'}">${c.call_type}</span></td>
+                        <td><span class="badge badge-gray">${escapeHtml(c.provider || 'mock')}</span></td>
+                        <td><strong>${escapeHtml(phone)}</strong></td>
+                        <td><span class="badge ${badgeClass}">${escapeHtml(c.status)}</span></td>
+                        <td>${dur}</td>
+                        <td style="font-size: 0.8rem; color: var(--text-muted);">${dt}</td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="openCallDetails(${c.id})">🔍 View Details</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.warn('Error loading telephony history:', err);
+            }
+        }
 
         function escapeHtml(text) {
             if (!text) return '';

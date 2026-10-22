@@ -52,3 +52,57 @@ def convert_to_16k_mono_wav(input_path: str, output_path: str = None) -> str:
     except Exception as e:
         print(f"[audio_utils Warning] Audio conversion to 16kHz mono failed: {e}")
         return input_path
+
+
+def pcm_to_wav_bytes(pcm_data: bytes, sample_rate: int = 16000, channels: int = 1) -> bytes:
+    """
+    Wraps raw 16-bit Linear PCM audio bytes into a standard RIFF/WAV container in memory.
+    """
+    import io
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(2)  # 16-bit
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_data)
+    return buf.getvalue()
+
+
+def wav_to_pcm_bytes(wav_path: str, target_sample_rate: int = 16000) -> bytes:
+    """
+    Decodes and resamples any audio file (WAV, MP3, etc.) into raw Linear PCM bytes
+    (s16le, mono, target_sample_rate) suitable for streaming to telephony providers.
+    """
+    if not wav_path or not os.path.exists(wav_path):
+        return b""
+    pcm_chunks = []
+    try:
+        with av.open(wav_path) as in_container:
+            if not in_container.streams.audio:
+                return b""
+            in_stream = in_container.streams.audio[0]
+            resampler = av.AudioResampler(format="s16", layout="mono", rate=target_sample_rate)
+            for frame in in_container.decode(in_stream):
+                for resampled in resampler.resample(frame):
+                    pcm_chunks.append(resampled.to_ndarray().tobytes())
+        return b"".join(pcm_chunks)
+    except Exception as e:
+        print(f"[audio_utils Warning] wav_to_pcm_bytes failed: {e}")
+        return b""
+
+
+def calculate_pcm_rms(pcm_data: bytes) -> float:
+    """
+    Computes Root Mean Square (RMS) amplitude of 16-bit mono PCM audio data.
+    Useful for Voice Activity Detection (VAD) and silence threshold detection.
+    """
+    import math
+    import struct
+
+    if not pcm_data or len(pcm_data) < 2:
+        return 0.0
+    count = len(pcm_data) // 2
+    shorts = struct.unpack(f"<{count}h", pcm_data[:count * 2])
+    sum_squares = sum(s * s for s in shorts)
+    return math.sqrt(sum_squares / count)
+
