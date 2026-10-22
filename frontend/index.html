@@ -1127,6 +1127,9 @@
                     <div class="empty-title">All clear! No pending assistance requests</div>
                     <div class="empty-text">When a customer needs human assistance or selects Hindi/Marathi, requests appear here immediately with one-click callback.</div>
                 </div>
+            </div>
+        </section>
+
         <!-- ========================================== -->
         <!-- VIEW: TELEPHONY INTEGRATION (PHASE 9)       -->
         <!-- ========================================== -->
@@ -2791,6 +2794,12 @@
         let telephonyTimerInterval = null;
 
         async function loadTelephonyView() {
+            if (!allCustomers || allCustomers.length === 0) {
+                try {
+                    const res = await fetch('/api/customers', { headers: authHeaders() });
+                    if (res.ok) allCustomers = await res.json();
+                } catch (e) {}
+            }
             populateTelephonyCustomerDropdown();
             await fetchTelephonyStatus();
             await loadTelephonyHistory();
