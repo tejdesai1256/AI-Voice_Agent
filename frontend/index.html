@@ -1147,6 +1147,7 @@
                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                         <span class="badge badge-gray" id="telephony-concurrency-badge">Active Calls: 0 / 5</span>
                         <span class="badge badge-gray" id="telephony-limit-badge">Max Duration: 600s</span>
+                        <button class="btn btn-secondary btn-sm" onclick="verifyTelephonyProvider()" title="Safely test credentials without placing a paid call">🛡️ Verify Provider Keys</button>
                         <button class="btn btn-secondary btn-sm" onclick="loadTelephonyView()">🔄 Refresh</button>
                     </div>
                 </div>
@@ -1203,8 +1204,9 @@
                         </button>
                     </div>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; font-size: 0.85rem; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm);">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; font-size: 0.85rem; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm);">
                     <div><strong>Call ID:</strong> <span id="telephony-active-id">#0</span></div>
+                    <div><strong>Call Mode:</strong> <span id="telephony-active-provider-mode" class="badge badge-primary">🧪 SIMULATED MOCK</span></div>
                     <div><strong>Destination Phone:</strong> <span id="telephony-active-phone">-</span></div>
                     <div><strong>Provider Call SID:</strong> <span id="telephony-active-sid">-</span></div>
                     <div><strong>Language Routing:</strong> <span id="telephony-active-lang">Pending IVR</span></div>
@@ -2835,6 +2837,33 @@
             }
         }
 
+        async function verifyTelephonyProvider() {
+            showToast('Checking telephony provider connection & credentials...');
+            try {
+                const res = await fetch('/api/telephony/verify-provider', { headers: authHeaders() });
+                const data = await res.json();
+                const warn = document.getElementById('telephony-provider-warning');
+                if (data.valid) {
+                    showToast(`✓ Provider Verified: ${data.message}`);
+                    warn.classList.remove('hidden');
+                    warn.style.background = 'var(--success-light)';
+                    warn.style.borderColor = 'var(--success-border)';
+                    warn.style.color = 'var(--success)';
+                    warn.innerHTML = `✅ <strong>${data.provider.toUpperCase()} Provider Online:</strong> ${escapeHtml(data.message)} ${data.caller_id ? '(Caller ID: ' + escapeHtml(data.caller_id) + ')' : ''}`;
+                } else {
+                    showToast(`⚠️ Provider Status: ${data.message}`);
+                    warn.classList.remove('hidden');
+                    warn.style.background = 'var(--warning-light)';
+                    warn.style.borderColor = 'var(--warning-border)';
+                    warn.style.color = 'var(--warning)';
+                    warn.innerHTML = `⚠️ <strong>Configuration Alert:</strong> ${escapeHtml(data.message)}`;
+                }
+                await fetchTelephonyStatus();
+            } catch (err) {
+                showToast(`❌ Verification failed: ${err.message}`);
+            }
+        }
+
         function populateTelephonyCustomerDropdown() {
             const select = document.getElementById('telephony-customer-select');
             if (!select) return;
@@ -2892,10 +2921,11 @@
                 if (!res.ok) throw new Error(data.detail || 'Call initiation failed');
 
                 msgSpan.style.color = 'var(--success)';
-                msgSpan.textContent = `✓ Call initiated (ID: #${data.call_id}). Connecting...`;
-                showToast(`✓ Outbound call initiated to ${data.destination}`);
+                const provLabel = (data.provider || '').toLowerCase() === 'mock' ? 'SIMULATED MOCK' : 'REAL TELEPHONE';
+                msgSpan.textContent = `✓ Call initiated [${provLabel}] (ID: #${data.call_id}). Connecting...`;
+                showToast(`✓ Outbound call initiated to ${data.destination} [${provLabel}]`);
 
-                showActiveTelephonyCard(data.call_id, data.destination, data.call_sid);
+                showActiveTelephonyCard(data.call_id, data.destination, data.call_sid, data.provider);
                 loadTelephonyHistory();
             } catch (err) {
                 msgSpan.style.color = 'var(--danger)';
@@ -2906,7 +2936,7 @@
             }
         }
 
-        function showActiveTelephonyCard(callId, destination, callSid) {
+        function showActiveTelephonyCard(callId, destination, callSid, provider) {
             activeTelephonyCallId = callId;
             telephonyStartTime = Date.now();
 
@@ -2917,6 +2947,13 @@
             document.getElementById('telephony-active-sid').textContent = callSid || 'Pending';
             document.getElementById('telephony-active-status').textContent = 'QUEUED';
             document.getElementById('telephony-active-status').className = 'badge badge-warning';
+
+            const modeBadge = document.getElementById('telephony-active-provider-mode');
+            if (modeBadge) {
+                const isMock = (provider || 'mock').toLowerCase() === 'mock';
+                modeBadge.textContent = isMock ? '🧪 SIMULATED MOCK' : '📞 REAL TELEPHONE';
+                modeBadge.className = isMock ? 'badge badge-primary' : 'badge badge-success';
+            }
 
             clearInterval(telephonyTimerInterval);
             telephonyTimerInterval = setInterval(updateTelephonyTimer, 1000);
@@ -3038,10 +3075,15 @@
                     else if (['failed', 'canceled', 'busy', 'no_answer'].includes(st)) badgeClass = 'badge-danger';
                     else if (['escalated', 'human_transferred'].includes(st)) badgeClass = 'badge-danger';
 
+                    const isMock = (c.provider || '').toLowerCase() === 'mock';
+                    const provBadge = isMock
+                        ? '<span class="badge badge-primary">🧪 Mock (Simulated)</span>'
+                        : '<span class="badge badge-success">📞 Exotel (PSTN)</span>';
+
                     tr.innerHTML = `
                         <td><strong>#${c.id}</strong></td>
                         <td><span class="badge ${c.call_type === 'OUTBOUND' ? 'badge-primary' : 'badge-warning'}">${c.call_type}</span></td>
-                        <td><span class="badge badge-gray">${escapeHtml(c.provider || 'mock')}</span></td>
+                        <td>${provBadge}</td>
                         <td><strong>${escapeHtml(phone)}</strong></td>
                         <td><span class="badge ${badgeClass}">${escapeHtml(c.status)}</span></td>
                         <td>${dur}</td>

@@ -2,6 +2,7 @@ import os
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database.database import SessionLocal
@@ -58,6 +59,31 @@ class TelephonyService:
                 "success": False,
                 "error": err,
                 "code": "INVALID_PHONE_NUMBER",
+            }
+
+        # 2b. Check for duplicate active call to the same phone number (idempotency guard)
+        for active in self.active_calls.values():
+            if active.get("destination_phone") == norm_phone:
+                return {
+                    "success": False,
+                    "error": f"A call is already active for {mask_phone_number(norm_phone)} (Call ID #{active.get('call_id')}). Please wait for it to complete.",
+                    "code": "DUPLICATE_CALL_IN_PROGRESS",
+                }
+
+        active_db = (
+            db.query(Call)
+            .filter(
+                Call.destination_phone == norm_phone,
+                Call.ended_at.is_(None),
+                func.lower(Call.status).in_(["queued", "initiated", "ringing", "in_progress", "active", "awaiting_language"]),
+            )
+            .first()
+        )
+        if active_db:
+            return {
+                "success": False,
+                "error": f"A call is already in progress for {mask_phone_number(norm_phone)} (Call ID #{active_db.id}, status: {active_db.status}).",
+                "code": "DUPLICATE_CALL_IN_PROGRESS",
             }
 
         # 3. Resolve or create customer record
@@ -315,3 +341,10 @@ class TelephonyService:
             "max_concurrent_calls": self.max_concurrent_calls,
             "max_call_duration_seconds": self.max_call_duration_seconds,
         }
+
+    async def verify_provider(self) -> Dict[str, Any]:
+        """
+        Runs zero-cost credentials verification against the active provider.
+        """
+        adapter = self.get_adapter()
+        return await adapter.verify_credentials()

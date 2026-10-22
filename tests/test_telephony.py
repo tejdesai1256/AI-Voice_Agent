@@ -135,6 +135,16 @@ def test_telephony_suite():
     assert call_id and call_sid
     print(f"  [PASS] Outbound call initiated successfully: Call ID #{call_id}, SID '{call_sid}'")
 
+    # 7b. Duplicate active call rejection (idempotency guard)
+    print("\n[7b/15] Testing Duplicate In-Progress Call Rejection...")
+    dup_res = client.post(
+        "/api/telephony/outbound",
+        json={"phone_number": "+919876543210"},
+        headers=headers,
+    )
+    assert dup_res.status_code == 409, f"Expected 409 Conflict for duplicate call, got {dup_res.status_code}: {dup_res.text}"
+    print("  [PASS] Duplicate outbound call to active number was correctly blocked with 409 Conflict")
+
     # -------------------------------------------------------------------------
     # 8. Concurrency guard limit test
     # -------------------------------------------------------------------------
@@ -305,8 +315,20 @@ def test_telephony_suite():
     assert len(hist_calls) >= 2
     print(f"  [PASS] Telephony status & call history verified ({len(hist_calls)} telephony calls tracked)")
 
+    # -------------------------------------------------------------------------
+    # 15. Provider Credential Self-Check (Zero-Cost Verification)
+    # -------------------------------------------------------------------------
+    print("\n[15/15] Testing Provider Credentials Self-Check Endpoint...")
+    v_res = client.get("/api/telephony/verify-provider", headers=headers)
+    assert v_res.status_code == 200
+    v_data = v_res.json()
+    assert "valid" in v_data
+    assert "provider" in v_data
+    assert "message" in v_data
+    print(f"  [PASS] Provider self-check verified: {v_data['provider']} (valid: {v_data['valid']})")
+
     print("\n========================================================")
-    print("ALL 14 TELEPHONY LAYER TESTS PASSED 100% SUCCESSFULLY!")
+    print("ALL 15 TELEPHONY LAYER TESTS PASSED 100% SUCCESSFULLY!")
     print("========================================================")
 
 

@@ -38,7 +38,10 @@ TERMINAL_CALL_STATUSES: Set[str] = {
     "busy",
     "no_answer",
     "canceled",
+    "cancelled",
     "human_transferred",
+    "escalated",
+    "resolved",
 }
 
 VALID_STATUS_TRANSITIONS: Dict[str, Set[str]] = {
@@ -159,6 +162,13 @@ class TelephonyAdapter(ABC):
         """
         pass
 
+    @abstractmethod
+    async def verify_credentials(self) -> Dict[str, Any]:
+        """
+        Safely validates provider API credentials without dialing a paid call.
+        """
+        pass
+
 
 class MockTelephonyAdapter(TelephonyAdapter):
     """
@@ -275,6 +285,14 @@ class MockTelephonyAdapter(TelephonyAdapter):
 
     def get_recording(self, provider_call_id: str) -> Optional[str]:
         return f"/audio/mock_recording_{provider_call_id}.wav"
+
+    async def verify_credentials(self) -> Dict[str, Any]:
+        return {
+            "valid": True,
+            "provider": "mock",
+            "message": "Mock Telephony Provider is operational (local simulation mode).",
+            "configured": True,
+        }
 
 
 class ExotelTelephonyAdapter(TelephonyAdapter):
@@ -547,6 +565,47 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
         if not self.is_configured() or not provider_call_id:
             return None
         return f"{self.base_url}/Calls/{provider_call_id}/Recording"
+
+    async def verify_credentials(self) -> Dict[str, Any]:
+        if not self.is_configured():
+            return {
+                "valid": False,
+                "provider": "exotel",
+                "message": "Exotel credentials are not fully configured (missing EXOTEL_ACCOUNT_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN, or EXOTEL_CALLER_ID).",
+                "configured": False,
+            }
+        # Safe zero-cost query to Exotel Account endpoint (does NOT dial a number)
+        account_url = f"{self.base_url}.json"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.get(account_url, auth=(self.api_key, self.api_token))
+                if res.status_code == 200:
+                    data = res.json()
+                    acc_info = data.get("Account", {})
+                    return {
+                        "valid": True,
+                        "provider": "exotel",
+                        "account_sid": self.account_sid,
+                        "caller_id": mask_phone_number(self.caller_id),
+                        "account_status": acc_info.get("Status", "active"),
+                        "message": "Exotel credentials verified successfully via Exotel Account API.",
+                        "configured": True,
+                    }
+                else:
+                    return {
+                        "valid": False,
+                        "provider": "exotel",
+                        "status_code": res.status_code,
+                        "message": f"Exotel authentication failed (HTTP {res.status_code}): {res.text[:200]}",
+                        "configured": True,
+                    }
+        except Exception as e:
+            return {
+                "valid": False,
+                "provider": "exotel",
+                "message": f"Network error checking Exotel credentials: {str(e)}",
+                "configured": True,
+            }
 
 
 def get_telephony_adapter(provider_name: Optional[str] = None) -> TelephonyAdapter:

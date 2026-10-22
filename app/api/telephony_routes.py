@@ -70,6 +70,8 @@ async def initiate_outbound_telephony_call(
         status_code = 400
         if code == "CONCURRENCY_LIMIT_EXCEEDED":
             status_code = 429
+        elif code == "DUPLICATE_CALL_IN_PROGRESS":
+            status_code = 409
         elif code == "CUSTOMER_NOT_FOUND":
             status_code = 404
         elif code == "PROVIDER_REJECTED":
@@ -183,6 +185,16 @@ def get_telephony_status(
     Returns telemetry and health of provider configuration without exposing secrets.
     """
     return telephony_service.get_system_status()
+
+
+@router.get("/verify-provider")
+async def verify_telephony_provider(
+    current_user: SystemUser = Depends(get_current_user),
+):
+    """
+    Safely tests provider credentials and health without initiating a paid call.
+    """
+    return await telephony_service.verify_provider()
 
 
 @router.get("/calls")
