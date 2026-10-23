@@ -142,7 +142,6 @@ def test_full_pipeline():
     print("\n==========================================")
     print("ALL 10 END-TO-END PIPELINE TESTS PASSED!")
     print("==========================================")
-    sys.exit(0)
 
 
 if __name__ == "__main__":

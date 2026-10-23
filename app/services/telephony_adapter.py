@@ -322,7 +322,14 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
         return f"https://{self.subdomain}/v1/Accounts/{self.account_sid}"
 
     def is_configured(self) -> bool:
-        return bool(self.account_sid and self.api_key and self.api_token and self.caller_id)
+        keys = [self.account_sid, self.api_key, self.api_token, self.caller_id]
+        if not all(keys):
+            return False
+        for k in keys:
+            val = str(k).strip()
+            if not val or val.startswith(("<", "{", "your_exotel_")) or val.endswith((">")):
+                return False
+        return True
 
     async def start_outbound_call(
         self,
@@ -351,15 +358,20 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
             )
 
         # Build Connect Voice AI API request
-        # API endpoint: POST https://<subdomain>/v1/Accounts/<AccountSid>/Calls/connect
+        # API endpoint: POST https://<subdomain>/v1/Accounts/<AccountSid>/Calls/connect.json
         connect_url = f"{self.base_url}/Calls/connect.json"
         public_base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
         callback_url = f"{public_base}/api/telephony/webhook/exotel" if public_base else ""
 
+        # For Exotel connect.json, 'Url' must be an HTTP/HTTPS URL returning ExOMl XML instructions
+        call_connect_url = stream_url
+        if stream_url.startswith(("wss://", "ws://")) or (public_base and not stream_url.startswith(("http://", "https://"))):
+            call_connect_url = f"{public_base}/api/telephony/calls/{call_id}/connect"
+
         payload = {
             "From": normalized_to,
             "CallerId": self.caller_id,
-            "Url": stream_url,
+            "Url": call_connect_url,
             "CustomField": str(call_id),
         }
         if callback_url:

@@ -27,6 +27,8 @@ client = TestClient(app)
 
 
 def test_telephony_suite():
+    # Force Mock adapter for unit testing to avoid telecom charges and external network dependencies
+    os.environ["TELEPHONY_PROVIDER"] = "mock"
     print("\n========================================================")
     print("STARTING TELEPHONY LAYER COMPREHENSIVE TEST SUITE")
     print("========================================================")

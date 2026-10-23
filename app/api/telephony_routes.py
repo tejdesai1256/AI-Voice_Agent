@@ -163,6 +163,32 @@ async def inbound_telephony_webhook(
     return res
 
 
+@router.api_route("/calls/{call_id}/connect", methods=["GET", "POST"])
+async def exotel_call_connect_instructions(
+    call_id: int,
+    request: Request,
+):
+    """
+    Public ExOMl endpoint queried by Exotel when an outbound call connects.
+    Returns the <Connect><Stream url="..." /></Connect> instruction to initiate AgentStream.
+    """
+    import os
+    ws_base = os.getenv("TELEPHONY_WS_URL")
+    if not ws_base:
+        public_base = os.getenv("PUBLIC_BASE_URL", "http://localhost:8001")
+        ws_base = public_base.replace("https://", "wss://").replace("http://", "ws://")
+    ws_base = ws_base.rstrip("/")
+    stream_url = f"{ws_base}/api/telephony/stream/{call_id}"
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="{stream_url}" />
+    </Connect>
+</Response>"""
+    return Response(content=xml_content, media_type="application/xml")
+
+
 @router.post("/calls/{call_id}/hangup")
 async def hangup_call_endpoint(
     call_id: int,
