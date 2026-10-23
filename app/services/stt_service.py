@@ -14,6 +14,9 @@ av.open = _compat_av_open
 from faster_whisper import WhisperModel
 
 
+_shared_whisper_model = None
+
+
 class STTService:
     def __init__(
         self,
@@ -23,15 +26,19 @@ class STTService:
     ):
         """
         Initializes the STTService with a local Faster-Whisper model.
+        Caches model in memory to prevent duplicate native MKL memory pool allocations.
         """
+        global _shared_whisper_model
         self.model_path = model_path
         self.device = device
         self.compute_type = compute_type
-        self.model = WhisperModel(
-            self.model_path,
-            device=self.device,
-            compute_type=self.compute_type,
-        )
+        if _shared_whisper_model is None:
+            _shared_whisper_model = WhisperModel(
+                self.model_path,
+                device=self.device,
+                compute_type=self.compute_type,
+            )
+        self.model = _shared_whisper_model
 
     def transcribe(self, audio_path: str) -> str:
         """

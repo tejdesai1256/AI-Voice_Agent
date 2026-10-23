@@ -9,10 +9,11 @@ from app.database.models import SystemUser, Call
 from app.utils.auth import get_current_user
 from app.services.telephony_service import TelephonyService
 from app.services.telephony_stream_manager import TelephonyStreamManager
+from app.api.call_routes import voice_service
 
 router = APIRouter()
 telephony_service = TelephonyService()
-stream_manager = TelephonyStreamManager()
+stream_manager = TelephonyStreamManager(voice_service=voice_service)
 
 
 class OutboundCallRequest(BaseModel):

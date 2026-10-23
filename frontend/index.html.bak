@@ -1,0 +1,3111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Calling Operations Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-subtle: #f1f5f9;
+            --border: #e2e8f0;
+            --border-focus: #cbd5e1;
+            
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --text-subtle: #94a3b8;
+            
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --primary-light: #eef2ff;
+            --primary-border: #c7d2fe;
+            
+            --accent-purple: #7c3aed;
+            --accent-purple-light: #f5f3ff;
+            
+            --success: #059669;
+            --success-light: #ecfdf5;
+            --success-border: #a7f3d0;
+            
+            --warning: #d97706;
+            --warning-light: #fffbeb;
+            --warning-border: #fde68a;
+            
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --danger-light: #fef2f2;
+            --danger-border: #fecaca;
+            
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+            
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.5;
+        }
+
+        .hidden { display: none !important; }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        .badge-primary { background: var(--primary-light); color: var(--primary); border: 1px solid var(--primary-border); }
+        .badge-success { background: var(--success-light); color: var(--success); border: 1px solid var(--success-border); }
+        .badge-warning { background: var(--warning-light); color: var(--warning); border: 1px solid var(--warning-border); }
+        .badge-danger { background: var(--danger-light); color: var(--danger); border: 1px solid var(--danger-border); }
+        .badge-gray { background: var(--bg-subtle); color: var(--text-muted); border: 1px solid var(--border); }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.55rem 1.1rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.875rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background-color: var(--primary);
+            color: #ffffff;
+            box-shadow: 0 1px 2px rgba(79, 70, 229, 0.2);
+        }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-secondary {
+            background-color: #ffffff;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+        }
+        .btn-secondary:hover {
+            background-color: var(--bg-subtle);
+            border-color: var(--border-focus);
+        }
+        .btn-danger {
+            background-color: var(--danger);
+            color: #ffffff;
+        }
+        .btn-danger:hover { background-color: var(--danger-hover); }
+        .btn-outline-danger {
+            background: #ffffff;
+            color: var(--danger);
+            border: 1px solid var(--danger-border);
+        }
+        .btn-outline-danger:hover { background: var(--danger-light); }
+        .btn-sm {
+            padding: 0.35rem 0.75rem;
+            font-size: 0.8rem;
+        }
+        .btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed !important;
+        }
+
+        /* HEADER / NAVBAR */
+        .navbar {
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            box-shadow: var(--shadow-sm);
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+        }
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 1.25rem;
+            font-weight: 800;
+            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+        }
+        .brand-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: -0.01em;
+        }
+        .brand-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .nav-items {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .nav-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-weight: 600;
+            padding: 0.5rem 0.85rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .nav-btn:hover {
+            color: var(--text-main);
+            background-color: var(--bg-subtle);
+        }
+        .nav-btn.active {
+            color: var(--primary);
+            background-color: var(--primary-light);
+            font-weight: 700;
+        }
+        .user-nav-box {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-left: 1rem;
+            padding-left: 1rem;
+            border-left: 1px solid var(--border);
+        }
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.825rem;
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        /* MAIN CONTAINER */
+        .main-container {
+            flex: 1;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .card-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: -0.01em;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .card-desc {
+            font-size: 0.825rem;
+            color: var(--text-muted);
+            margin-top: 0.2rem;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+        .data-table th {
+            background-color: var(--bg-subtle);
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 0.725rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table td {
+            padding: 0.85rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+            vertical-align: middle;
+        }
+        .data-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .data-table tbody tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: var(--text-muted);
+        }
+        .empty-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+            color: var(--text-subtle);
+        }
+        .empty-title {
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.25rem;
+            font-size: 1rem;
+        }
+        .empty-text {
+            font-size: 0.85rem;
+            max-width: 400px;
+            margin: 0 auto 1.25rem auto;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 0.35rem;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.6rem 0.85rem;
+            font-size: 0.875rem;
+            font-family: inherit;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background-color: #ffffff;
+            color: var(--text-main);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(3px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+            animation: modalFadeIn 0.15s ease;
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .modal-dialog {
+            background: #ffffff;
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--border);
+        }
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            line-height: 1;
+        }
+        .modal-body {
+            padding: 1.5rem;
+        }
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border);
+            background-color: var(--bg-subtle);
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            border-bottom-left-radius: var(--radius-lg);
+            border-bottom-right-radius: var(--radius-lg);
+        }
+
+        .login-wrapper {
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 420px;
+            padding: 2.25rem;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+
+        .transcript-container {
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            max-height: 380px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .chat-bubble {
+            max-width: 85%;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            line-height: 1.45;
+        }
+        .chat-customer {
+            align-self: flex-start;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            border-bottom-left-radius: 4px;
+        }
+        .chat-assistant {
+            align-self: flex-end;
+            background: var(--primary);
+            color: #ffffff;
+            border-bottom-right-radius: 4px;
+        }
+        .chat-speaker {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 0.25rem;
+            opacity: 0.85;
+        }
+
+        .audio-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.5rem 0.75rem;
+            margin-top: 0.75rem;
+        }
+
+        .mic-panel {
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .mic-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.825rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+        .pulse-dot {
+            width: 10px; height: 10px;
+            background-color: var(--danger);
+            border-radius: 50%;
+            animation: pulse-red 1.2s infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(1.2); }
+        }
+
+        .btn-mic {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            padding: 0.85rem 2rem;
+            font-size: 1.05rem;
+            font-weight: 700;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent;
+            font-family: inherit;
+            user-select: none;
+            text-decoration: none;
+        }
+        .btn-mic-idle {
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            color: #ffffff;
+            box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+        }
+        .btn-mic-idle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45);
+        }
+        .btn-mic-recording {
+            background: #dc2626 !important;
+            color: #ffffff !important;
+            animation: pulse-mic-ring 1.5s infinite;
+        }
+        @keyframes pulse-mic-ring {
+            0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+            70% { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+        }
+        .btn-mic-processing {
+            background: #64748b !important;
+            color: #ffffff !important;
+            cursor: wait !important;
+            box-shadow: none !important;
+            opacity: 0.85;
+        }
+        .btn-mic-speaking {
+            background: linear-gradient(135deg, #059669, #10b981) !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+            animation: pulse-speaking-ring 1.8s infinite;
+        }
+        @keyframes pulse-speaking-ring {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .recording-timer {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #dc2626;
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            padding: 0.2rem 0.55rem;
+            border-radius: 9999px;
+        }
+
+        .waiting-audio-box {
+            background: var(--warning-light);
+            border: 1px solid var(--warning-border);
+            color: var(--warning);
+            border-radius: var(--radius-sm);
+            padding: 0.6rem 0.9rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .lang-choice-card {
+            background: var(--primary-light);
+            border: 1px solid var(--primary-border);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            margin-bottom: 1.25rem;
+        }
+        .lang-btn-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .stat-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 1rem 1.25rem;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+        .stat-val {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--text-main);
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        /* Human Assistance Callback Styles */
+        .badge-info {
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+        .badge-amber {
+            background: #fffbeb;
+            color: #b45309;
+            border: 1px solid #fde68a;
+        }
+        .btn-call-back {
+            background-color: #4338ca;
+            color: #ffffff;
+            font-weight: 700;
+            box-shadow: 0 1px 3px rgba(67, 56, 202, 0.25);
+        }
+        .btn-call-back:hover {
+            background-color: #3730a3;
+            box-shadow: 0 2px 6px rgba(67, 56, 202, 0.35);
+        }
+        .btn-complete-cb {
+            background-color: #059669;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        .btn-complete-cb:hover {
+            background-color: #047857;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filter-pill {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.35rem 0.8rem;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .filter-pill:hover {
+            background: var(--bg-subtle);
+            color: var(--text-main);
+            border-color: var(--border-focus);
+        }
+        .filter-pill.active {
+            background: var(--primary);
+            color: #ffffff;
+            border-color: var(--primary);
+        }
+
+        .toast-box {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            background: #0f172a;
+            color: #ffffff;
+            padding: 0.9rem 1.25rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            z-index: 9999;
+            max-width: 420px;
+            animation: slide-up 0.25s ease-out;
+        }
+        @keyframes slide-up {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TOP NAVBAR -->
+    <header class="navbar">
+        <div class="brand" onclick="navigate('customers')">
+            <div class="brand-icon">📞</div>
+            <div>
+                <div class="brand-title">Voice Operations Hub</div>
+                <div class="brand-subtitle">Call Management & Voice Operations</div>
+            </div>
+        </div>
+
+        <nav class="nav-items" id="authenticated-nav" class="hidden">
+            <button class="nav-btn active" id="tab-customers" onclick="navigate('customers')">👥 Customers</button>
+            <button class="nav-btn" id="tab-history" onclick="navigate('history')">📜 Call History</button>
+            <button class="nav-btn" id="tab-live-call" onclick="navigate('live-call')">🎙️ Live Call</button>
+            <button class="nav-btn" id="tab-automation" onclick="navigate('automation')">🚀 Automated Calling</button>
+            <button class="nav-btn" id="tab-escalations" onclick="navigate('escalations')">
+                <span>🆘 Human Assistance</span>
+                <span class="badge badge-danger" id="nav-escalation-count">0</span>
+            </button>
+            <button class="nav-btn" id="tab-telephony" onclick="navigate('telephony')">📱 Telephony</button>
+            
+            <div class="user-nav-box">
+                <div class="user-pill">
+                    <span id="nav-username">Admin</span>
+                    <span class="badge badge-primary" id="nav-role">admin</span>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="logout()">Logout</button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- MAIN APP CONTAINER -->
+    <main class="main-container">
+
+        <!-- ========================================== -->
+        <!-- VIEW: LOGIN (REQUIRED SECTION 1)  hello         -->
+        <!-- ========================================== -->
+        <section id="view-login" class="login-wrapper">
+            <div class="login-card">
+                <div class="login-header">
+                    <div class="brand-icon" style="margin: 0 auto 1rem auto; width: 48px; height: 48px;">🔐</div>
+                    <h1 style="font-size: 1.35rem; font-weight: 800; color: var(--text-main);">System User Sign In</h1>
+                    <p style="font-size: 0.825rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        Authentication required for call operations dashboard
+                    </p>
+                </div>
+
+                <form id="login-form">
+                    <div class="form-group">
+                        <label class="form-label" for="login-username">Username</label>
+                        <input type="text" id="login-username" class="form-control" placeholder="e.g. admin" required autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="login-password">Password</label>
+                        <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+                    </div>
+
+                    <div id="login-error" class="badge badge-danger hidden" style="width: 100%; padding: 0.6rem; margin-bottom: 1rem; justify-content: center;">
+                        Invalid credentials.
+                    </div>
+
+                    <button type="submit" id="login-btn" class="btn btn-primary" style="width: 100%;">
+                        Sign In →
+                    </button>
+                </form>
+
+                <div style="margin-top: 1.25rem; text-align: center; font-size: 0.75rem; color: var(--text-muted);">
+                    Customers do not require accounts or logins.
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION A: CUSTOMERS                       -->
+        <!-- ========================================== -->
+        <section id="view-customers" class="hidden">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title">👥 Customers</h2>
+                        <p class="card-desc">Customer records and contact details.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="text" id="customer-search-input" class="form-control" placeholder="Search name, phone, ID..." style="width: 240px;" oninput="debounceSearch()">
+                        <button class="btn btn-primary btn-sm" onclick="openAddCustomerModal()">+ Add Customer</button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadCustomers()">↻ Refresh</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Customer ID</th>
+                                <th>Name</th>
+                                <th>Phone Number</th>
+                                <th>Created</th>
+                                <th>Total Calls</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customers-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="customers-empty" class="empty-state hidden">
+                    <div class="empty-icon">👥</div>
+                    <div class="empty-title">No customers found</div>
+                    <div class="empty-text">No customer records match your search.</div>
+                    <button class="btn btn-primary btn-sm" onclick="openAddCustomerModal()">+ Add New Customer</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION B: CALL HISTORY                    -->
+        <!-- ========================================== -->
+        <section id="view-history" class="hidden">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title">📜 Call History</h2>
+                        <p class="card-desc">Chronological log of completed calls and conversation transcripts.</p>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadCallHistory()">↻ Refresh History</button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Call ID</th>
+                                <th>Customer</th>
+                                <th>Phone</th>
+                                <th>Language</th>
+                                <th>Status</th>
+                                <th>Started</th>
+                                <th>Duration</th>
+                                <th>Messages</th>
+                                <th>Requirements</th>
+                                <th style="text-align: right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="calls-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="calls-empty" class="empty-state hidden">
+                    <div class="empty-icon">📜</div>
+                    <div class="empty-title">No call records found</div>
+                    <div class="empty-text">Call history will appear here once calls are initiated.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION C: LIVE CALL (DEDICATED SECTION)   -->
+        <!-- ========================================== -->
+        <section id="view-live-call" class="hidden">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title">🎙️ Live Call & Audio Testing</h2>
+                        <p class="card-desc">Start a live call with a customer. Record voice, verify preview, and click SEND AUDIO.</p>
+                    </div>
+                    <div id="live-call-active-badge-container">
+                        <span id="live-call-status-pill" class="badge badge-gray">IDLE</span>
+                    </div>
+                </div>
+
+                <!-- Call Setup: Customer & Language Selection -->
+                <div id="live-call-setup-card" style="background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1.25rem; margin-bottom: 1.5rem;">
+                    <div style="display: grid; grid-template-columns: 2fr 1.5fr auto; gap: 1rem; align-items: flex-end;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">1. Select Customer:</label>
+                            <select id="live-customer-dropdown" class="form-control">
+                                <!-- Options populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label">2. Initial Language:</label>
+                            <select id="live-language-choice" class="form-control">
+                                <option value="prompt" selected>🌐 Ask Customer on Call (1: English, 2: Hindi, 3: Marathi)</option>
+                                <option value="1">1 — English (AI Voice Response)</option>
+                                <option value="2">2 — हिंदी / Hindi (Human Assistance)</option>
+                                <option value="3">3 — मराठी / Marathi (Human Assistance)</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="initiateLiveCallFromSection()">
+                            📞 Start Call
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Active Call Session Panel -->
+                <div id="live-call-session-panel" class="hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding: 0.75rem 1rem; background: var(--primary-light); border: 1px solid var(--primary-border); border-radius: var(--radius-sm);">
+                        <div>
+                            <strong id="live-active-cust-name" style="color: var(--primary);">Customer Name</strong>
+                            <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;" id="live-active-cust-meta">Call #0 • Phone: N/A</span>
+                        </div>
+                        <button class="btn btn-danger btn-sm" onclick="endLiveCallFromSection()">End Call</button>
+                    </div>
+
+                    <!-- Interactive Language Selection (IVR) Banner -->
+                    <div id="live-language-ivr-banner" style="background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                        <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between;">
+                            <span>🌐 Language Selection: Press 1 for English | Press 2 for Hindi | Press 3 for Marathi</span>
+                            <span class="badge badge-primary">Keypad Active (1, 2, 3)</span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-ivr-lang-1" onclick="pressLanguageKey('1')">
+                                <strong>1</strong> • English (AI Voice)
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-ivr-lang-2" onclick="pressLanguageKey('2')">
+                                <strong>2</strong> • हिंदी / Hindi (Human Assistance)
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-ivr-lang-3" onclick="pressLanguageKey('3')">
+                                <strong>3</strong> • मराठी / Marathi (Human Assistance)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Conversation Transcript -->
+                    <div class="form-group">
+                        <label class="form-label" style="display: flex; justify-content: space-between;">
+                            <span>Conversation Transcript</span>
+                            <span id="live-transcript-count" class="badge badge-gray">0 messages</span>
+                        </label>
+                        <div id="live-transcript-box" class="transcript-container" style="min-height: 200px;">
+                            <div style="text-align: center; color: var(--text-subtle); margin: auto; font-size: 0.85rem;">
+                                Call started. Record speech below and click "SEND AUDIO".
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Voice Response Audio Player -->
+                    <div id="live-ai-audio-card" class="hidden audio-bar">
+                        <span style="font-size: 0.8rem; font-weight: 700; color: var(--primary);">🔊 Voice Response:</span>
+                        <audio id="live-ai-audio-player" controls style="flex: 1; height: 32px;"></audio>
+                    </div>
+                    <div id="live-call-timing-badge" class="badge badge-gray hidden" style="margin-top: 0.5rem; font-size: 0.75rem; width: 100%; justify-content: center;"></div>
+
+                    <!-- Waiting Audio Banner (Phase 6) -->
+                    <div id="live-waiting-audio-banner" class="waiting-audio-box hidden">
+                        <span class="pulse-dot" style="background-color: var(--warning);"></span>
+                        <span>Processing takes longer than 3–4s. Playing natural waiting prompt...</span>
+                        <audio id="live-waiting-audio-player" class="hidden"></audio>
+                    </div>
+
+                    <!-- Modern Microphone Voice Interaction Panel -->
+                    <div class="mic-panel" style="margin-top: 1.25rem;">
+                        <div class="mic-indicator">
+                            <span id="live-rec-dot" class="pulse-dot hidden"></span>
+                            <span id="live-rec-status-text">Click "Start Speaking" to talk with the AI assistant</span>
+                            <span id="live-rec-timer" class="recording-timer hidden">00:00</span>
+                        </div>
+
+                        <!-- Error Alert Banner for Permissions / No Mic / Failure -->
+                        <div id="live-mic-error-banner" class="hidden" style="background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: var(--radius-sm); padding: 0.65rem 1rem; font-size: 0.825rem; margin-bottom: 0.75rem; text-align: left;">
+                            <span id="live-mic-error-text"></span>
+                        </div>
+
+                        <!-- Modern Unified Microphone Button & Cancel Control -->
+                        <div style="display: flex; gap: 0.75rem; justify-content: center; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap;">
+                            <button type="button" id="live-btn-mic" class="btn-mic btn-mic-idle" onclick="toggleLiveSpeaking()">
+                                <span id="live-btn-mic-icon" style="font-size: 1.25rem;">🎙️</span>
+                                <span id="live-btn-mic-label">Start Speaking</span>
+                            </button>
+                            <button type="button" id="live-btn-cancel-rec" class="btn btn-secondary btn-sm hidden" onclick="cancelLiveRecording()" title="Cancel and discard recording">
+                                ✖ Cancel
+                            </button>
+                        </div>
+
+                        <!-- Manual Audio File Upload & Processing -->
+                        <div id="live-audio-ready-section" class="hidden" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border);">
+                            <div style="font-size: 0.8rem; font-weight: 700; color: var(--success); margin-bottom: 0.5rem;">
+                                📁 Audio File Selected & Ready
+                            </div>
+                            <audio id="live-recorded-preview" controls style="width: 100%; max-width: 400px; height: 32px; margin-bottom: 0.75rem;"></audio>
+                            <div>
+                                <button type="button" id="live-btn-send-audio" class="btn btn-primary btn-sm" onclick="submitLiveAudioFile()">
+                                    🚀 Process Selected Audio File
+                                </button>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 0.85rem; font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <span>🔒 Microphone access requires HTTPS or localhost</span>
+                            <span>Or test with audio file: <input type="file" id="live-manual-audio-file" accept="audio/*" onchange="handleLiveManualFileSelect(event)"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION D: AUTOMATED CALLING               -->
+        <!-- ========================================== -->
+        <section id="view-automation" class="hidden">
+            <!-- Simulation Mode Honest Disclaimer -->
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 0.85rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;">
+                <span style="font-size: 1.25rem;">ℹ️</span>
+                <div style="font-size: 0.825rem; color: #1e40af;">
+                    <strong>Simulation Mode Active:</strong> Automated calling runs in local simulation mode for testing. No carrier telephone calls are placed.
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-val" id="stat-auto-status">Stopped</div>
+                    <div class="stat-label">Automation Engine</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-val" id="stat-auto-waiting">0</div>
+                    <div class="stat-label">Queue Waiting</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-val" id="stat-auto-completed">0</div>
+                    <div class="stat-label">Calls Completed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-val" id="stat-auto-failed">0</div>
+                    <div class="stat-label">Calls Failed / Cancelled</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title">🚀 Automated Queue Controls</h2>
+                        <p class="card-desc">Explicit user activation required. Automated calling NEVER starts automatically on load or login.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem; align-items: center;">
+                        <button id="btn-start-auto" class="btn btn-primary" onclick="startAutomatedCalling()">
+                            ▶ START AUTOMATED CALLING
+                        </button>
+                        <button id="btn-stop-auto" class="btn btn-danger hidden" onclick="stopAutomatedCalling()">
+                            ⏹ STOP AUTOMATED CALLING
+                        </button>
+                        <button id="btn-stop-current-call" class="btn btn-outline-danger btn-sm hidden" onclick="stopActiveCall()">
+                            Cancel Active Call
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Customer Selection for Queue -->
+                <div style="margin-bottom: 1.25rem; padding: 1rem; background: var(--bg-subtle); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <span style="font-size: 0.85rem; font-weight: 700;">Select Customers:</span>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary btn-sm" onclick="toggleSelectAllCustomers(true)">Select All</button>
+                            <button class="btn btn-secondary btn-sm" onclick="toggleSelectAllCustomers(false)">Deselect All</button>
+                        </div>
+                    </div>
+                    <div id="auto-customer-select-list" style="max-height: 180px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.5rem;">
+                        <!-- Checkboxes inserted dynamically -->
+                    </div>
+                </div>
+
+                <!-- Queue Status Display -->
+                <h3 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 0.75rem;">Real-time Queue Status:</h3>
+                <div id="auto-queue-display" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius-sm);">
+                        Queue is idle. Select customers and click "START AUTOMATED CALLING" to begin.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- SECTION E: HUMAN ASSISTANCE                -->
+        <!-- ========================================== -->
+        <section id="view-escalations" class="hidden">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title">🆘 Human Assistance & Callbacks</h2>
+                        <p class="card-desc">Customer assistance queue for Hindi/Marathi routing and representative callbacks.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                        <div class="filter-group">
+                            <button class="filter-pill active" id="esc-pill-all" onclick="filterEscalations('all')">All</button>
+                            <button class="filter-pill" id="esc-pill-waiting" onclick="filterEscalations('waiting')">Waiting for Callback</button>
+                            <button class="filter-pill" id="esc-pill-initiated" onclick="filterEscalations('callback_initiated')">Callback Initiated</button>
+                            <button class="filter-pill" id="esc-pill-resolved" onclick="filterEscalations('resolved')">Resolved</button>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="loadEscalations()">↻ Refresh</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Customer Name</th>
+                                <th>Phone Number</th>
+                                <th>Selected Language</th>
+                                <th>Reason</th>
+                                <th>Callback Status</th>
+                                <th>Request Time</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="escalations-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="escalations-empty" class="empty-state hidden">
+                    <div class="empty-icon">✅</div>
+                    <div class="empty-title">All clear! No pending assistance requests</div>
+                    <div class="empty-text">When a customer needs human assistance or selects Hindi/Marathi, requests appear here immediately with one-click callback.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW: TELEPHONY INTEGRATION (PHASE 9)       -->
+        <!-- ========================================== -->
+        <section id="view-telephony" class="hidden">
+            <!-- Telephony Gateway Status Header -->
+            <div class="card" style="border-left: 4px solid var(--primary); background: linear-gradient(to right, #ffffff, var(--primary-light));">
+                <div class="card-header" style="margin-bottom: 0.5rem;">
+                    <div>
+                        <h2 class="card-title" style="display: flex; align-items: center; gap: 0.6rem;">
+                            <span>📱 Telephony Gateway & Real-Time Call Operations</span>
+                            <span class="badge badge-primary" id="telephony-provider-badge">Mock Mode</span>
+                        </h2>
+                        <p class="card-subtitle">Connect phone calls directly into the AI Voice Agent via PSTN/Mobile carrier network.</p>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                        <span class="badge badge-gray" id="telephony-concurrency-badge">Active Calls: 0 / 5</span>
+                        <span class="badge badge-gray" id="telephony-limit-badge">Max Duration: 600s</span>
+                        <button class="btn btn-secondary btn-sm" onclick="verifyTelephonyProvider()" title="Safely test credentials without placing a paid call">🛡️ Verify Provider Keys</button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadTelephonyView()">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div id="telephony-provider-warning" class="hidden" style="margin-top: 0.75rem; background: var(--warning-light); border: 1px solid var(--warning-border); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; font-size: 0.8rem; color: var(--warning);">
+                    ⚠️ Provider credentials pending: Currently operating in safe Mock Simulation mode. Real PSTN calls require EXOTEL_ACCOUNT_SID and API keys in .env.
+                </div>
+            </div>
+
+            <!-- Outbound Dialing Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">📞 Make an Outbound Telephone Call</h3>
+                        <p class="card-subtitle">Dial an Indian or international phone number to bridge the caller into the AI voice agent.</p>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: flex-end;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="telephony-dial-phone">Destination Phone Number <span style="color: var(--danger);">*</span></label>
+                        <input type="tel" id="telephony-dial-phone" class="form-control" placeholder="+91 98765 43210 or 9876543210" autocomplete="tel">
+                        <small style="color: var(--text-muted); font-size: 0.75rem;">Accepts 10-digit Indian numbers or E.164 (+91...)</small>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="telephony-customer-select">Select Existing Customer (Optional)</label>
+                        <select id="telephony-customer-select" class="form-control" onchange="onTelephonyCustomerSelected()">
+                            <option value="">-- Manual Entry / New Customer --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="telephony-dial-name">Customer Name (Optional)</label>
+                        <input type="text" id="telephony-dial-name" class="form-control" placeholder="e.g. Rahul Sharma">
+                    </div>
+                </div>
+                <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; align-items: center;">
+                    <button id="btn-dial-telephony" class="btn btn-primary" onclick="initiateTelephonyCall()">
+                        <span>📞 Dial Phone Call</span>
+                    </button>
+                    <span id="telephony-dial-msg" style="font-size: 0.825rem; font-weight: 600;"></span>
+                </div>
+            </div>
+
+            <!-- Active Call Live Monitor Card -->
+            <div id="telephony-active-card" class="card hidden" style="border: 2px solid var(--primary); background: #ffffff;">
+                <div class="card-header">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="live-dot"></span>
+                        <h3 class="card-title" style="color: var(--primary);">Active Telephone Call</h3>
+                        <span class="badge badge-warning" id="telephony-active-status">QUEUED</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="recording-timer" id="telephony-active-timer">00:00</span>
+                        <button id="btn-hangup-telephony" class="btn btn-danger btn-sm" onclick="hangupCurrentTelephonyCall()">
+                            🛑 Hang Up Call
+                        </button>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; font-size: 0.85rem; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm);">
+                    <div><strong>Call ID:</strong> <span id="telephony-active-id">#0</span></div>
+                    <div><strong>Call Mode:</strong> <span id="telephony-active-provider-mode" class="badge badge-primary">🧪 SIMULATED MOCK</span></div>
+                    <div><strong>Destination Phone:</strong> <span id="telephony-active-phone">-</span></div>
+                    <div><strong>Provider Call SID:</strong> <span id="telephony-active-sid">-</span></div>
+                    <div><strong>Language Routing:</strong> <span id="telephony-active-lang">Pending IVR</span></div>
+                </div>
+                <div style="margin-top: 1rem; padding: 0.75rem; background: var(--primary-light); border: 1px solid var(--primary-border); border-radius: var(--radius-sm); font-size: 0.8rem; color: var(--primary);">
+                    🎙️ <strong>Live Audio Stream Active:</strong> Caller audio is streamed bidirectionally via AgentStream media WebSocket with real-time VAD turn detection and barge-in support.
+                </div>
+            </div>
+
+            <!-- Telephony Call History Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">📜 Telephony Call History</h3>
+                        <p class="card-subtitle">Inbound and outbound telephone calls handled by the platform.</p>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadTelephonyHistory()">🔄 Refresh History</button>
+                </div>
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Call ID</th>
+                                <th>Direction</th>
+                                <th>Provider</th>
+                                <th>Phone Number</th>
+                                <th>Status</th>
+                                <th>Duration</th>
+                                <th>Started At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="telephony-history-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="telephony-history-empty" class="empty-state hidden">
+                    <div class="empty-icon">📱</div>
+                    <div class="empty-title">No telephony calls yet</div>
+                    <div class="empty-text">Use the dialer above to initiate an outbound phone call.</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ==================================================== -->
+    <!-- MODAL: CALL DETAILS & FULL TRANSCRIPT (SECTION B)   -->
+    <!-- ==================================================== -->
+    <div id="modal-call-details" class="modal-overlay hidden">
+        <div class="modal-dialog" style="max-width: 650px;">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title">Call Details</h3>
+                    <div style="font-size: 0.775rem; color: var(--text-muted);" id="modal-detail-call-id">Call ID: #0</div>
+                </div>
+                <button class="modal-close" onclick="closeCallDetailsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Customer & Call Information -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; font-size: 0.825rem; background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm);">
+                    <div><strong>Customer Name:</strong> <span id="detail-cust-name">-</span></div>
+                    <div><strong>Customer Phone:</strong> <span id="detail-cust-phone">-</span></div>
+                    <div><strong>Call Status:</strong> <span id="detail-call-status" class="badge badge-gray">-</span></div>
+                    <div><strong>Selected Language:</strong> <span id="detail-call-lang">English</span></div>
+                    <div><strong>Start Time:</strong> <span id="detail-call-started">-</span></div>
+                    <div><strong>End Time:</strong> <span id="detail-call-ended">-</span></div>
+                </div>
+
+                <!-- Structured Requirements Collected -->
+                <div style="margin-bottom: 1.25rem;">
+                    <h4 style="font-size: 0.85rem; font-weight: 700; color: var(--primary); margin-bottom: 0.4rem;">
+                        📋 Requirements Collected During Conversation:
+                    </h4>
+                    <div id="detail-requirements-box" style="background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.85rem; font-size: 0.825rem;">
+                        No structured requirements collected for this call.
+                    </div>
+                </div>
+
+                <!-- Complete Conversation Transcript -->
+                <div>
+                    <h4 style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.4rem;">
+                        💬 Complete Conversation Transcript:
+                    </h4>
+                    <div id="detail-transcript-box" class="transcript-container">
+                        <!-- Populated chronologically -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeCallDetailsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================== -->
+    <!-- MODAL: ADD / EDIT CUSTOMER                          -->
+    <!-- ==================================================== -->
+    <div id="modal-customer" class="modal-overlay hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 class="modal-title" id="cust-modal-title">Add Customer</h3>
+                <button class="modal-close" onclick="closeCustomerModal()">&times;</button>
+            </div>
+            <form id="customer-form">
+                <div class="modal-body">
+                    <input type="hidden" id="cust-form-id">
+                    <div class="form-group">
+                        <label class="form-label" for="cust-form-ext-id">Customer ID *</label>
+                        <input type="text" id="cust-form-ext-id" class="form-control" placeholder="Customer ID" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cust-form-name">Customer Full Name *</label>
+                        <input type="text" id="cust-form-name" class="form-control" placeholder="Customer full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cust-form-phone">Phone Number *</label>
+                        <input type="text" id="cust-form-phone" class="form-control" placeholder="Phone number" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeCustomerModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="cust-form-submit">Save Customer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================================================== -->
+    <!-- MODAL: RESOLVE ESCALATION                           -->
+    <!-- ==================================================== -->
+    <div id="modal-resolve-esc" class="modal-overlay hidden">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 class="modal-title">Resolve Escalation</h3>
+                <button class="modal-close" onclick="closeResolveModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="resolve-esc-id">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                    Record resolution notes for customer <strong id="resolve-cust-name"></strong>:
+                </p>
+                <div class="form-group">
+                    <label class="form-label">Resolution Notes</label>
+                    <textarea id="resolve-notes" class="form-control" rows="3" placeholder="Handled customer query regarding..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeResolveModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitResolveEscalation()">Mark Resolved</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================================================== -->
+    <!-- MODAL: INITIATE CUSTOMER CALLBACK (REQUIREMENT 1)    -->
+    <!-- ==================================================== -->
+    <div id="modal-callback-confirm" class="modal-overlay hidden">
+        <div class="modal-dialog" style="max-width: 480px;">
+            <div class="modal-header">
+                <h3 class="modal-title">📞 Initiate Customer Callback</h3>
+                <button class="modal-close" onclick="closeCallbackModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="cb-modal-esc-id">
+                <div style="background: var(--bg-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.85rem; margin-bottom: 1rem;">
+                    <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-main);" id="cb-modal-cust-name">-</div>
+                    <div style="font-size: 0.825rem; color: var(--text-muted); margin-top: 0.2rem;">
+                        Phone: <strong id="cb-modal-cust-phone" style="color: var(--text-main);">-</strong>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--primary); margin-top: 0.2rem;">
+                        Language: <strong id="cb-modal-cust-lang">Hindi</strong>
+                    </div>
+                </div>
+
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-sm); padding: 0.75rem; margin-bottom: 1rem; font-size: 0.8rem; color: #1e40af;">
+                    <strong>ℹ️ Telephony Notice:</strong> Callback action will be registered in customer records with timestamp. Telephony provider gateway is currently integration-ready (carrier PBX connection pending).
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="cb-modal-notes">Operator Callback Notes (Optional)</label>
+                    <textarea id="cb-modal-notes" class="form-control" rows="2" placeholder="e.g. Assigned operator for phone outreach..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeCallbackModal()">Cancel</button>
+                <button type="button" class="btn btn-call-back" onclick="confirmInitiateCallback()">Initiate Callback →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast-container" class="hidden"></div>
+
+    <!-- JAVASCRIPT APPLICATION LOGIC -->
+    <script>
+        let authToken = localStorage.getItem('auth_token') || null;
+        let currentUser = null;
+        let allCustomers = [];
+        let activeLiveCall = null;
+        let liveMediaRecorder = null;
+        let liveAudioChunks = [];
+        let liveAudioFile = null;
+        let autoPollingInterval = null;
+        let searchTimeout = null;
+        let liveRecTimerInterval = null;
+        let liveRecStartTime = null;
+        let liveMicState = 'idle'; // 'idle' | 'recording' | 'processing'
+
+        // Waiting Audio State
+        let waitingTimer = null;
+        let isProcessingTurn = false;
+        let waitingClips = [
+            '/static/waiting/waiting_1.wav',
+            '/static/waiting/waiting_2.wav',
+            '/static/waiting/waiting_3.wav'
+        ];
+        let currentWaitingClipIndex = 0;
+
+        function authHeaders() {
+            return { 'Authorization': `Bearer ${authToken}` };
+        }
+
+        async function checkAuth() {
+            if (!authToken) {
+                showLogin();
+                return;
+            }
+            try {
+                const res = await fetch('/api/auth/me', { headers: authHeaders() });
+                if (res.ok) {
+                    currentUser = await res.json();
+                    document.getElementById('nav-username').textContent = currentUser.username;
+                    document.getElementById('nav-role').textContent = currentUser.role;
+                    document.getElementById('authenticated-nav').classList.remove('hidden');
+                    document.getElementById('view-login').classList.add('hidden');
+                    navigate('customers');
+                } else {
+                    logout();
+                }
+            } catch (err) {
+                console.error('Auth check error:', err);
+                logout();
+            }
+        }
+
+        function showLogin() {
+            document.getElementById('authenticated-nav').classList.add('hidden');
+            document.getElementById('view-login').classList.remove('hidden');
+            ['customers', 'history', 'live-call', 'automation', 'escalations', 'telephony'].forEach(v => {
+                const sec = document.getElementById(`view-${v}`);
+                if (sec) sec.classList.add('hidden');
+            });
+        }
+
+        function logout() {
+            localStorage.removeItem('auth_token');
+            authToken = null;
+            currentUser = null;
+            clearInterval(autoPollingInterval);
+            clearInterval(telephonyPollingInterval);
+            showLogin();
+        }
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const u = document.getElementById('login-username').value.trim();
+            const p = document.getElementById('login-password').value;
+            const errDiv = document.getElementById('login-error');
+            const btn = document.getElementById('login-btn');
+
+            errDiv.classList.add('hidden');
+            btn.disabled = true;
+            btn.textContent = 'Authenticating...';
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Login failed');
+
+                authToken = data.access_token;
+                localStorage.setItem('auth_token', authToken);
+                currentUser = data.user;
+
+                document.getElementById('nav-username').textContent = currentUser.username;
+                document.getElementById('nav-role').textContent = currentUser.role;
+                document.getElementById('authenticated-nav').classList.remove('hidden');
+                document.getElementById('view-login').classList.add('hidden');
+                navigate('customers');
+            } catch (err) {
+                errDiv.textContent = err.message;
+                errDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Sign In →';
+            }
+        });
+
+        function navigate(viewName) {
+            ['customers', 'history', 'live-call', 'automation', 'escalations', 'telephony'].forEach(v => {
+                const sec = document.getElementById(`view-${v}`);
+                const btn = document.getElementById(`tab-${v}`);
+                if (sec) sec.classList.toggle('hidden', v !== viewName);
+                if (btn) btn.classList.toggle('active', v === viewName);
+            });
+
+            if (viewName === 'customers') loadCustomers();
+            if (viewName === 'history') loadCallHistory();
+            if (viewName === 'live-call') populateLiveCallDropdown();
+            if (viewName === 'automation') initAutomationView();
+            if (viewName === 'escalations') loadEscalations();
+            if (viewName === 'telephony') loadTelephonyView();
+        }
+
+        // ==========================================
+        // SECTION A: CUSTOMERS
+        // ==========================================
+        async function loadCustomers() {
+            const tbody = document.getElementById('customers-tbody');
+            const emptyState = document.getElementById('customers-empty');
+            const searchVal = document.getElementById('customer-search-input').value.trim();
+
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Loading customers from database...</td></tr>`;
+            emptyState.classList.add('hidden');
+
+            try {
+                let url = '/api/customers';
+                if (searchVal) url += `?q=${encodeURIComponent(searchVal)}`;
+                const res = await fetch(url, { headers: authHeaders() });
+                if (res.status === 401) return logout();
+                allCustomers = await res.json();
+
+                if (!allCustomers || allCustomers.length === 0) {
+                    tbody.innerHTML = '';
+                    emptyState.classList.remove('hidden');
+                    return;
+                }
+
+                tbody.innerHTML = allCustomers.map(c => `
+                    <tr>
+                        <td><strong>${escapeHtml(c.external_customer_id)}</strong></td>
+                        <td>${escapeHtml(c.name && c.name !== 'N/A' ? c.name : c.external_customer_id)}</td>
+                        <td>${escapeHtml(c.phone || 'N/A')}</td>
+                        <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
+                        <td><span class="badge badge-gray">${c.call_count} calls</span></td>
+                        <td style="text-align: right;">
+                            <div style="display: flex; gap: 0.4rem; justify-content: flex-end;">
+                                <button class="btn btn-primary btn-sm" onclick="goToLiveCall('${c.external_customer_id}')">
+                                    📞 Live Call
+                                </button>
+                                <button class="btn btn-secondary btn-sm" onclick="openEditCustomerModal(${c.id}, '${escapeHtml(c.external_customer_id)}', '${escapeHtml(c.name || '')}', '${escapeHtml(c.phone || '')}')">
+                                    ✏️ Edit
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" onclick="deleteCustomer(${c.id}, '${escapeHtml(c.name || c.external_customer_id)}')">
+                                    🗑️
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="6" style="color: var(--danger); text-align: center;">Error loading customers: ${err.message}</td></tr>`;
+            }
+        }
+
+        function debounceSearch() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(loadCustomers, 300);
+        }
+
+        function openAddCustomerModal() {
+            document.getElementById('cust-modal-title').textContent = 'Add Customer';
+            document.getElementById('cust-form-id').value = '';
+            document.getElementById('cust-form-ext-id').value = `CUST_${Date.now().toString().slice(-4)}`;
+            document.getElementById('cust-form-name').value = '';
+            document.getElementById('cust-form-phone').value = '';
+            document.getElementById('modal-customer').classList.remove('hidden');
+        }
+
+        function openEditCustomerModal(id, extId, name, phone) {
+            document.getElementById('cust-modal-title').textContent = 'Edit Customer';
+            document.getElementById('cust-form-id').value = id;
+            document.getElementById('cust-form-ext-id').value = extId;
+            document.getElementById('cust-form-name').value = name;
+            document.getElementById('cust-form-phone').value = phone;
+            document.getElementById('modal-customer').classList.remove('hidden');
+        }
+
+        function closeCustomerModal() {
+            document.getElementById('modal-customer').classList.add('hidden');
+        }
+
+        document.getElementById('customer-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('cust-form-id').value;
+            const extId = document.getElementById('cust-form-ext-id').value.trim();
+            const name = document.getElementById('cust-form-name').value.trim();
+            const phone = document.getElementById('cust-form-phone').value.trim();
+
+            const formData = new FormData();
+            formData.append('external_customer_id', extId);
+            formData.append('name', name);
+            formData.append('phone', phone);
+
+            try {
+                let url = '/api/customers';
+                let method = 'POST';
+                if (id) {
+                    url = `/api/customers/${id}`;
+                    method = 'PUT';
+                }
+                const res = await fetch(url, { method, headers: authHeaders(), body: formData });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to save customer');
+
+                closeCustomerModal();
+                loadCustomers();
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        });
+
+        async function deleteCustomer(id, name) {
+            if (!confirm(`Are you sure you want to delete customer "${name}" and all their call records?`)) return;
+            try {
+                const res = await fetch(`/api/customers/${id}`, { method: 'DELETE', headers: authHeaders() });
+                if (!res.ok) throw new Error('Failed to delete customer');
+                loadCustomers();
+            } catch (err) {
+                alert(`Error deleting customer: ${err.message}`);
+            }
+        }
+
+        // ==========================================
+        // SECTION B: CALL HISTORY
+        // ==========================================
+        async function loadCallHistory() {
+            const tbody = document.getElementById('calls-tbody');
+            const emptyState = document.getElementById('calls-empty');
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Loading persistent call history...</td></tr>`;
+            emptyState.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/calls', { headers: authHeaders() });
+                if (res.status === 401) return logout();
+                const calls = await res.json();
+
+                if (!calls || calls.length === 0) {
+                    tbody.innerHTML = '';
+                    emptyState.classList.remove('hidden');
+                    return;
+                }
+
+                tbody.innerHTML = calls.map(c => `
+                    <tr>
+                        <td><strong>#${c.id}</strong></td>
+                        <td>${escapeHtml(c.customer_name)}</td>
+                        <td>${escapeHtml(c.customer_phone)}</td>
+                        <td><span class="badge badge-gray">${escapeHtml(c.language || 'en')}</span></td>
+                        <td><span class="badge ${c.status === 'RESOLVED' ? 'badge-success' : (c.status === 'ESCALATED' ? 'badge-danger' : 'badge-primary')}">${c.status}</span></td>
+                        <td>${c.started_at ? new Date(c.started_at).toLocaleString() : '-'}</td>
+                        <td>${c.duration_seconds !== null ? `${c.duration_seconds}s` : 'In Progress'}</td>
+                        <td><span class="badge badge-gray">${c.message_count} msgs</span></td>
+                        <td>${c.has_requirements ? '<span class="badge badge-success">✓ Captured</span>' : '<span class="badge badge-gray">None</span>'}</td>
+                        <td style="text-align: right;">
+                            <button class="btn btn-secondary btn-sm" onclick="viewCallDetails(${c.id})">
+                                View Details 📜
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="10" style="color: var(--danger); text-align: center;">Error loading calls: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function viewCallDetails(callId) {
+            try {
+                const res = await fetch(`/api/calls/${callId}`, { headers: authHeaders() });
+                if (!res.ok) throw new Error('Failed to load call details');
+                const data = await res.json();
+
+                document.getElementById('modal-detail-call-id').textContent = `Call ID: #${data.call.id}`;
+                document.getElementById('detail-cust-name').textContent = data.customer.name;
+                document.getElementById('detail-cust-phone').textContent = data.customer.phone;
+                document.getElementById('detail-call-status').textContent = data.call.status;
+                document.getElementById('detail-call-status').className = `badge ${data.call.status === 'RESOLVED' ? 'badge-success' : (data.call.status === 'ESCALATED' ? 'badge-danger' : 'badge-primary')}`;
+                document.getElementById('detail-call-lang').textContent = data.call.language.toUpperCase();
+                document.getElementById('detail-call-started').textContent = data.call.started_at ? new Date(data.call.started_at).toLocaleString() : '-';
+                document.getElementById('detail-call-ended').textContent = data.call.ended_at ? new Date(data.call.ended_at).toLocaleString() : 'In Progress';
+
+                // Requirements
+                const reqBox = document.getElementById('detail-requirements-box');
+                if (data.requirements && data.requirements.structured) {
+                    const r = data.requirements.structured;
+                    reqBox.innerHTML = `
+                        <div><strong>Products / Services:</strong> ${escapeHtml(r.products_or_services || 'N/A')}</div>
+                        <div><strong>Requirements Summary:</strong> ${escapeHtml(r.requirements || 'N/A')}</div>
+                        <div><strong>Quantity / Scope:</strong> ${escapeHtml(r.quantity || 'N/A')}</div>
+                        <div><strong>Budget:</strong> ${escapeHtml(r.budget || 'N/A')}</div>
+                        <div><strong>Deadline:</strong> ${escapeHtml(r.deadline || 'N/A')}</div>
+                        ${r.important_details && r.important_details.length ? `<div><strong>Details:</strong> ${escapeHtml(r.important_details.join(', '))}</div>` : ''}
+                    `;
+                } else {
+                    reqBox.innerHTML = `<span style="color: var(--text-muted);">No structured requirements collected for this call.</span>`;
+                }
+
+                // Full Chronological Transcript
+                const transcriptBox = document.getElementById('detail-transcript-box');
+                if (!data.transcript || data.transcript.length === 0) {
+                    transcriptBox.innerHTML = `<div style="text-align: center; color: var(--text-muted); margin: auto; padding: 1.5rem;">No conversation was recorded for this call.</div>`;
+                } else {
+                    transcriptBox.innerHTML = data.transcript.map(m => `
+                        <div class="chat-bubble ${m.speaker === 'customer' ? 'chat-customer' : 'chat-assistant'}">
+                            <div class="chat-speaker"><strong>${m.speaker === 'customer' ? 'Customer' : 'Assistant'}:</strong></div>
+                            <div>${escapeHtml(m.text)}</div>
+                            <div style="font-size: 0.65rem; opacity: 0.7; margin-top: 0.2rem;">${m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : ''}</div>
+                        </div>
+                    `).join('');
+                }
+
+                document.getElementById('modal-call-details').classList.remove('hidden');
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        function closeCallDetailsModal() {
+            document.getElementById('modal-call-details').classList.add('hidden');
+        }
+
+        // ==========================================
+        // SECTION C: LIVE CALL
+        // ==========================================
+        async function populateLiveCallDropdown(preSelectExtId = null) {
+            try {
+                const res = await fetch('/api/customers', { headers: authHeaders() });
+                allCustomers = await res.json();
+                const dropdown = document.getElementById('live-customer-dropdown');
+                dropdown.innerHTML = allCustomers.map(c => `
+                    <option value="${c.external_customer_id}" ${preSelectExtId === c.external_customer_id ? 'selected' : ''}>
+                        ${escapeHtml(c.name && c.name !== 'N/A' ? c.name : c.external_customer_id)} (${escapeHtml(c.phone || c.external_customer_id)})
+                    </option>
+                `).join('');
+            } catch (err) {
+                console.error('Error populating live call dropdown:', err);
+            }
+        }
+
+        function goToLiveCall(extId) {
+            navigate('live-call');
+            populateLiveCallDropdown(extId);
+        }
+
+        async function initiateLiveCallFromSection() {
+            const extId = document.getElementById('live-customer-dropdown').value;
+            const lang = document.getElementById('live-language-choice').value;
+            if (!extId) {
+                alert('Please select a customer first.');
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('external_customer_id', extId);
+                formData.append('language', lang);
+
+                const res = await fetch('/api/calls', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to start call');
+
+                activeLiveCall = {
+                    call_id: data.call_id,
+                    customer_id: data.customer_id,
+                    external_customer_id: data.external_customer_id,
+                    name: data.name || extId,
+                    phone: data.phone || 'N/A',
+                    language: data.language || lang,
+                    messages: []
+                };
+
+                document.getElementById('live-active-cust-name').textContent = activeLiveCall.name;
+                document.getElementById('live-active-cust-meta').textContent = `Call #${activeLiveCall.call_id} • Phone: ${activeLiveCall.phone} • Language: ${activeLiveCall.language.toUpperCase()}`;
+                document.getElementById('live-call-session-panel').classList.remove('hidden');
+
+                resetLiveRecordingUI();
+
+                if (data.status === 'AWAITING_LANGUAGE') {
+                    activeLiveCall.messages.push({
+                        speaker: 'assistant',
+                        text: data.response || "Press 1 for English. Press 2 for Hindi. Press 3 for Marathi."
+                    });
+                    document.getElementById('live-call-status-pill').textContent = 'AWAITING LANGUAGE (PRESS 1, 2, or 3)';
+                    document.getElementById('live-call-status-pill').className = 'badge badge-warning';
+
+                    if (data.audio_url) {
+                        playAiAudioResponse(data.audio_url);
+                    }
+
+                    document.getElementById('live-rec-status-text').textContent = 'System prompting language selection. Press 1 (EN), 2 (HI), or 3 (MR) on keypad or keyboard.';
+                } else if (data.is_escalated) {
+                    activeLiveCall.messages.push({
+                        speaker: 'assistant',
+                        text: data.response
+                    });
+                    document.getElementById('live-call-status-pill').textContent = 'WAITING FOR HUMAN ASSISTANCE';
+                    document.getElementById('live-call-status-pill').className = 'badge badge-warning';
+
+                    if (data.audio_url) {
+                        playAiAudioResponse(data.audio_url);
+                    }
+
+                    document.getElementById('live-rec-status-text').textContent = 'Customer routed to Human Assistance. Voice conversation ended.';
+                    setMicButtonState('disabled');
+                    loadEscalations();
+                } else {
+                    activeLiveCall.messages.push({
+                        speaker: 'assistant',
+                        text: data.response || "Hello! I am your AI voice assistant. How can I help you today?"
+                    });
+                    document.getElementById('live-call-status-pill').textContent = 'ACTIVE CALL';
+                    document.getElementById('live-call-status-pill').className = 'badge badge-success';
+                    if (data.audio_url) {
+                        playAiAudioResponse(data.audio_url);
+                    }
+                }
+
+                renderLiveTranscript();
+            } catch (err) {
+                alert(`Error starting live call: ${err.message}`);
+            }
+        }
+
+        async function pressLanguageKey(key) {
+            if (!activeLiveCall) {
+                alert('Please click "Start Call" first, or select a customer.');
+                return;
+            }
+            try {
+                const formData = new FormData();
+                formData.append('digit', key);
+                formData.append('language', key);
+                const res = await fetch(`/api/calls/${activeLiveCall.call_id}/dtmf`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Language selection error');
+
+                activeLiveCall.language = data.language;
+                document.getElementById('live-active-cust-meta').textContent = `Call #${activeLiveCall.call_id} • Phone: ${activeLiveCall.phone} • Language: ${activeLiveCall.language.toUpperCase()}`;
+
+                const keyLabel = key === '1' ? '1 - English' : key === '2' ? '2 - Hindi' : '3 - Marathi';
+                activeLiveCall.messages.push({ speaker: 'customer', text: `[DTMF Keypad: ${keyLabel}]` });
+
+                if (data.is_escalated) {
+                    activeLiveCall.messages.push({ speaker: 'assistant', text: data.response });
+                    renderLiveTranscript();
+
+                    document.getElementById('live-call-status-pill').textContent = 'WAITING FOR HUMAN ASSISTANCE';
+                    document.getElementById('live-call-status-pill').className = 'badge badge-warning';
+
+                    if (data.audio_url) {
+                        playAiAudioResponse(data.audio_url);
+                    }
+
+                    document.getElementById('live-rec-status-text').textContent = 'Customer routed to Human Assistance. Voice conversation ended.';
+                    setMicButtonState('disabled');
+                    document.getElementById('live-audio-ready-section').classList.add('hidden');
+                    loadEscalations();
+                } else {
+                    activeLiveCall.messages.push({ speaker: 'assistant', text: data.response || "Hello! I am your AI voice assistant. How can I help you today?" });
+                    renderLiveTranscript();
+                    document.getElementById('live-call-status-pill').textContent = 'ACTIVE CALL';
+                    document.getElementById('live-call-status-pill').className = 'badge badge-success';
+
+                    if (data.audio_url) {
+                        playAiAudioResponse(data.audio_url);
+                    } else {
+                        setMicButtonState('idle');
+                        document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+                    }
+                }
+            } catch (err) {
+                alert(`Error selecting language: ${err.message}`);
+            }
+        }
+
+        function renderLiveTranscript() {
+            const box = document.getElementById('live-transcript-box');
+            const badge = document.getElementById('live-transcript-count');
+
+            if (!activeLiveCall || activeLiveCall.messages.length === 0) {
+                box.innerHTML = `<div style="text-align: center; color: var(--text-subtle); margin: auto; font-size: 0.85rem;">Select customer and click "Start Call".</div>`;
+                badge.textContent = '0 messages';
+                return;
+            }
+
+            box.innerHTML = activeLiveCall.messages.map(m => `
+                <div class="chat-bubble ${m.speaker === 'customer' ? 'chat-customer' : 'chat-assistant'}">
+                    <div class="chat-speaker"><strong>${m.speaker === 'customer' ? 'Customer' : 'Assistant'}:</strong></div>
+                    <div>${escapeHtml(m.text)}</div>
+                </div>
+            `).join('');
+            badge.textContent = `${activeLiveCall.messages.length} messages`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        // ---- Audio Resource & Object URL Manager ----
+        let currentPreviewObjectUrl = null;
+        let liveMicStream = null;
+
+        function setAudioPreviewUrl(blobOrFile) {
+            if (currentPreviewObjectUrl) {
+                URL.revokeObjectURL(currentPreviewObjectUrl);
+                currentPreviewObjectUrl = null;
+            }
+            const previewEl = document.getElementById('live-recorded-preview');
+            if (blobOrFile && previewEl) {
+                currentPreviewObjectUrl = URL.createObjectURL(blobOrFile);
+                previewEl.src = currentPreviewObjectUrl;
+            } else if (previewEl) {
+                previewEl.src = '';
+            }
+        }
+
+        function releaseMicStream() {
+            if (liveMicStream) {
+                try {
+                    liveMicStream.getTracks().forEach(t => t.stop());
+                } catch (e) {
+                    console.log('Error releasing mic track:', e);
+                }
+                liveMicStream = null;
+            }
+        }
+
+        function stopAllAudioPlayback() {
+            stopWaitingAudio();
+            const aiPlayer = document.getElementById('live-ai-audio-player');
+            if (aiPlayer) {
+                aiPlayer.pause();
+                aiPlayer.currentTime = 0;
+                aiPlayer.onplay = null;
+                aiPlayer.onended = null;
+                aiPlayer.onerror = null;
+            }
+            if (liveMicState === 'speaking') {
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+            }
+        }
+
+        function playAiAudioResponse(audioUrl, onEndedCallback) {
+            stopAllAudioPlayback();
+            const aiPlayer = document.getElementById('live-ai-audio-player');
+            if (!aiPlayer || !audioUrl) return;
+
+            aiPlayer.src = audioUrl;
+            aiPlayer.load();
+            document.getElementById('live-ai-audio-card').classList.remove('hidden');
+
+            setMicButtonState('speaking');
+            document.getElementById('live-rec-status-text').textContent = '🔊 AI Assistant is speaking... (Click to interrupt)';
+
+            aiPlayer.onplay = () => {
+                setMicButtonState('speaking');
+                document.getElementById('live-rec-status-text').textContent = '🔊 AI Assistant is speaking... (Click to interrupt)';
+            };
+
+            aiPlayer.onended = () => {
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+                if (onEndedCallback) onEndedCallback();
+            };
+
+            aiPlayer.onerror = (e) => {
+                console.error('Audio playback error:', e);
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+            };
+
+            aiPlayer.play().catch(e => {
+                console.log('Autoplay notice:', e);
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+            });
+        }
+
+        // ---- Unified Mic Button State Manager ----
+        function setMicButtonState(state) {
+            const btn = document.getElementById('live-btn-mic');
+            const icon = document.getElementById('live-btn-mic-icon');
+            const label = document.getElementById('live-btn-mic-label');
+            const cancelBtn = document.getElementById('live-btn-cancel-rec');
+            if (!btn) return;
+
+            liveMicState = state;
+            btn.disabled = false;
+            btn.className = 'btn-mic';
+
+            if (cancelBtn) {
+                if (state === 'recording') {
+                    cancelBtn.classList.remove('hidden');
+                } else {
+                    cancelBtn.classList.add('hidden');
+                }
+            }
+
+            switch (state) {
+                case 'idle':
+                    btn.classList.add('btn-mic-idle');
+                    icon.textContent = '🎙️';
+                    label.textContent = 'Start Speaking';
+                    break;
+                case 'recording':
+                    btn.classList.add('btn-mic-recording');
+                    icon.textContent = '⏹️';
+                    label.textContent = 'Stop Speaking';
+                    break;
+                case 'processing':
+                    btn.classList.add('btn-mic-processing');
+                    icon.textContent = '⏳';
+                    label.textContent = 'Processing...';
+                    btn.disabled = true;
+                    break;
+                case 'speaking':
+                    btn.classList.add('btn-mic-speaking');
+                    icon.textContent = '🔊';
+                    label.textContent = 'AI Speaking... (Click to talk)';
+                    break;
+                case 'disabled':
+                    btn.classList.add('btn-mic-processing');
+                    icon.textContent = '🚫';
+                    label.textContent = 'Call Ended';
+                    btn.disabled = true;
+                    break;
+            }
+        }
+
+        // ---- Recording Timer ----
+        function startRecordingTimer() {
+            liveRecStartTime = Date.now();
+            const timerEl = document.getElementById('live-rec-timer');
+            timerEl.classList.remove('hidden');
+            timerEl.textContent = '00:00';
+            liveRecTimerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - liveRecStartTime) / 1000);
+                const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                const secs = String(elapsed % 60).padStart(2, '0');
+                timerEl.textContent = `${mins}:${secs}`;
+            }, 500);
+        }
+
+        function stopRecordingTimer() {
+            if (liveRecTimerInterval) {
+                clearInterval(liveRecTimerInterval);
+                liveRecTimerInterval = null;
+            }
+            document.getElementById('live-rec-timer').classList.add('hidden');
+        }
+
+        // ---- Toggle Mic (unified button onclick) ----
+        async function toggleLiveSpeaking() {
+            if (!activeLiveCall) {
+                showMicError('Please start a call before recording. Select a customer and click "Start Call".');
+                return;
+            }
+            if (liveMicState === 'processing') return;
+
+            // If assistant is speaking, clicking button interrupts playback and transitions to speaking
+            if (liveMicState === 'speaking') {
+                stopAllAudioPlayback();
+                await startLiveRecording();
+                return;
+            }
+
+            if (liveMicState === 'recording') {
+                // Stop recording and submit
+                stopLiveRecording();
+                return;
+            }
+
+            // Start recording
+            await startLiveRecording();
+        }
+
+        function showMicError(msg) {
+            const banner = document.getElementById('live-mic-error-banner');
+            const text = document.getElementById('live-mic-error-text');
+            text.textContent = msg;
+            banner.classList.remove('hidden');
+            setTimeout(() => banner.classList.add('hidden'), 7000);
+        }
+
+        async function startLiveRecording() {
+            if (!activeLiveCall) return;
+            if (liveMicState === 'processing') return;
+
+            // Ensure any ongoing audio playback is stopped
+            stopAllAudioPlayback();
+
+            try {
+                liveAudioChunks = [];
+                liveAudioFile = null;
+                setAudioPreviewUrl(null);
+                document.getElementById('live-audio-ready-section').classList.add('hidden');
+                document.getElementById('live-mic-error-banner').classList.add('hidden');
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        channelCount: 1,
+                    }
+                });
+                liveMicStream = stream;
+
+                // Detect supported MIME type for MediaRecorder
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : MediaRecorder.isTypeSupported('audio/webm')
+                        ? 'audio/webm'
+                        : '';
+
+                liveMediaRecorder = mimeType
+                    ? new MediaRecorder(stream, { mimeType })
+                    : new MediaRecorder(stream);
+
+                liveMediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) liveAudioChunks.push(e.data);
+                };
+
+                liveMediaRecorder.onstop = () => {
+                    stopRecordingTimer();
+                    releaseMicStream();
+
+                    const totalBytes = liveAudioChunks.reduce((acc, c) => acc + c.size, 0);
+                    if (liveAudioChunks.length === 0 || totalBytes < 150) {
+                        showMicError('Recording was empty or too short. Please speak clearly into your microphone.');
+                        resetLiveRecordingUI();
+                        return;
+                    }
+
+                    const ext = (liveMediaRecorder.mimeType || '').includes('webm') ? 'webm' : 'wav';
+                    const blobType = ext === 'webm' ? 'audio/webm' : 'audio/wav';
+                    const audioBlob = new Blob(liveAudioChunks, { type: blobType });
+                    liveAudioFile = new File([audioBlob], `speech_${Date.now()}.${ext}`, { type: blobType });
+
+                    setAudioPreviewUrl(audioBlob);
+
+                    // Auto-send: immediately submit the audio to the backend
+                    setMicButtonState('processing');
+                    document.getElementById('live-rec-dot').classList.add('hidden');
+                    document.getElementById('live-rec-status-text').textContent = 'Processing your speech...';
+                    submitLiveRecordedAudio();
+                };
+
+                liveMediaRecorder.start(250); // collect data every 250ms
+                document.getElementById('live-rec-dot').classList.remove('hidden');
+                document.getElementById('live-rec-status-text').textContent = '🔴 Recording... Speak now, then click "Stop Speaking"';
+                setMicButtonState('recording');
+                startRecordingTimer();
+            } catch (err) {
+                console.error('Microphone error:', err);
+                releaseMicStream();
+                let errorMsg = `Microphone access failed: ${err.message}`;
+                if (err.name === 'NotAllowedError') {
+                    errorMsg = '🔒 Microphone permission denied. Please allow microphone access in your browser settings and try again.';
+                } else if (err.name === 'NotFoundError') {
+                    errorMsg = '🎙️ No microphone detected. Please connect a microphone and try again.';
+                } else if (err.name === 'NotReadableError') {
+                    errorMsg = '⚠️ Microphone is already in use by another application. Please close other apps using the mic and retry.';
+                }
+                showMicError(errorMsg);
+                setMicButtonState('idle');
+            }
+        }
+
+        function stopLiveRecording() {
+            if (liveMediaRecorder && liveMediaRecorder.state !== 'inactive') {
+                liveMediaRecorder.stop();
+                document.getElementById('live-rec-dot').classList.add('hidden');
+            }
+        }
+
+        function cancelLiveRecording() {
+            if (liveMediaRecorder && liveMediaRecorder.state !== 'inactive') {
+                liveMediaRecorder.onstop = null; // Discard onstop auto-submit
+                try { liveMediaRecorder.stop(); } catch (e) {}
+            }
+            releaseMicStream();
+            stopRecordingTimer();
+            liveAudioChunks = [];
+            liveAudioFile = null;
+            setAudioPreviewUrl(null);
+            document.getElementById('live-rec-dot').classList.add('hidden');
+            document.getElementById('live-rec-status-text').textContent = 'Recording cancelled. Click "Start Speaking" when ready.';
+            setMicButtonState('idle');
+        }
+
+        // Alias: the "Process Selected Audio File" button calls this
+        function submitLiveAudioFile() {
+            submitLiveRecordedAudio();
+        }
+
+        function handleLiveManualFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                liveAudioFile = file;
+                setAudioPreviewUrl(file);
+                document.getElementById('live-audio-ready-section').classList.remove('hidden');
+                document.getElementById('live-rec-status-text').textContent = `Selected file: ${file.name}`;
+            }
+        }
+
+        function resetLiveRecordingUI() {
+            liveAudioChunks = [];
+            liveAudioFile = null;
+            releaseMicStream();
+            setAudioPreviewUrl(null);
+            stopRecordingTimer();
+            document.getElementById('live-rec-dot').classList.add('hidden');
+            document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+            setMicButtonState('idle');
+            document.getElementById('live-audio-ready-section').classList.add('hidden');
+            const fileInput = document.getElementById('live-manual-audio-file');
+            if (fileInput) fileInput.value = '';
+            document.getElementById('live-call-timing-badge').classList.add('hidden');
+            document.getElementById('live-mic-error-banner').classList.add('hidden');
+            stopWaitingAudio();
+        }
+
+        function startWaitingAudioTimer() {
+            isProcessingTurn = true;
+            currentWaitingClipIndex = 0;
+            waitingTimer = setTimeout(() => {
+                if (isProcessingTurn) {
+                    playSequentialWaitingAudio();
+                }
+            }, 3500); // 3.5 seconds
+        }
+
+        function playSequentialWaitingAudio() {
+            if (!isProcessingTurn) return;
+            const banner = document.getElementById('live-waiting-audio-banner');
+            const player = document.getElementById('live-waiting-audio-player');
+            banner.classList.remove('hidden');
+
+            const clipUrl = waitingClips[currentWaitingClipIndex % waitingClips.length];
+            player.src = clipUrl;
+            player.load();
+            player.play().catch(e => console.log('Waiting audio play notice:', e));
+
+            player.onended = () => {
+                currentWaitingClipIndex++;
+                if (isProcessingTurn) {
+                    setTimeout(() => {
+                        if (isProcessingTurn) {
+                            playSequentialWaitingAudio();
+                        }
+                    }, 2000);
+                }
+            };
+        }
+
+        function stopWaitingAudio() {
+            isProcessingTurn = false;
+            if (waitingTimer) {
+                clearTimeout(waitingTimer);
+                waitingTimer = null;
+            }
+            const banner = document.getElementById('live-waiting-audio-banner');
+            const player = document.getElementById('live-waiting-audio-player');
+            if (banner) banner.classList.add('hidden');
+            if (player) {
+                player.pause();
+                player.currentTime = 0;
+                player.onended = null;
+            }
+        }
+
+        async function submitLiveRecordedAudio() {
+            if (!activeLiveCall || !liveAudioFile) return;
+            if (isProcessingTurn) return; // Prevent duplicate concurrent requests
+
+            const sendBtn = document.getElementById('live-btn-send-audio');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Preparing response...';
+
+            const formData = new FormData();
+            formData.append('file', liveAudioFile);
+
+            startWaitingAudioTimer();
+
+            try {
+                const res = await fetch(`/api/calls/${activeLiveCall.call_id}/turn`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Voice processing error');
+
+                // Stop waiting audio immediately
+                stopWaitingAudio();
+
+                if (data.transcript) {
+                    activeLiveCall.messages.push({ speaker: 'customer', text: data.transcript });
+                }
+                if (data.response) {
+                    activeLiveCall.messages.push({ speaker: 'assistant', text: data.response });
+                }
+
+                renderLiveTranscript();
+
+                if (data.is_escalated) {
+                    document.getElementById('live-call-status-pill').textContent = 'ROUTED TO REPRESENTATIVE';
+                    document.getElementById('live-call-status-pill').className = 'badge badge-danger';
+                }
+
+                if (data.timings) {
+                    const tBadge = document.getElementById('live-call-timing-badge');
+                    tBadge.textContent = `Delivered in ${data.timings.total_sec}s`;
+                    tBadge.classList.remove('hidden');
+                }
+
+                // Reset recorded file UI
+                liveAudioChunks = [];
+                liveAudioFile = null;
+                document.getElementById('live-audio-ready-section').classList.add('hidden');
+                const fileInput = document.getElementById('live-manual-audio-file');
+                if (fileInput) fileInput.value = '';
+
+                // Handle AI audio response playback and speaking state
+                if (data.audio_url) {
+                    playAiAudioResponse(data.audio_url);
+                } else {
+                    setMicButtonState('idle');
+                    document.getElementById('live-rec-status-text').textContent = 'Click "Start Speaking" to talk with the AI assistant';
+                }
+            } catch (err) {
+                stopWaitingAudio();
+                showMicError(`Voice turn failed: ${err.message}`);
+                setMicButtonState('idle');
+                document.getElementById('live-rec-status-text').textContent = 'Turn failed. Click "Start Speaking" to try again.';
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '🚀 Process Selected Audio File';
+                if (liveMicState === 'processing') {
+                    setMicButtonState('idle');
+                }
+            }
+        }
+
+        async function endLiveCallFromSection() {
+            if (!activeLiveCall) return;
+            try {
+                await fetch(`/api/calls/${activeLiveCall.call_id}/end`, {
+                    method: 'POST',
+                    headers: authHeaders()
+                });
+                stopLiveRecording();
+                stopAllAudioPlayback();
+                resetLiveRecordingUI();
+                setMicButtonState('disabled');
+                document.getElementById('live-rec-status-text').textContent = 'Call ended. Select a customer and start a call to resume voice interaction.';
+                document.getElementById('live-call-status-pill').textContent = 'CALL ENDED';
+                document.getElementById('live-call-status-pill').className = 'badge badge-gray';
+                activeLiveCall = null;
+                alert('Call ended successfully.');
+            } catch (err) {
+                console.error('Error ending call:', err);
+            }
+        }
+
+        // ==========================================
+        // SECTION D: AUTOMATED CALLING
+        // ==========================================
+        async function initAutomationView() {
+            try {
+                const res = await fetch('/api/customers', { headers: authHeaders() });
+                allCustomers = await res.json();
+                const container = document.getElementById('auto-customer-select-list');
+                container.innerHTML = allCustomers.map(c => `
+                    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; background: #ffffff; padding: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;">
+                        <input type="checkbox" name="auto_customer_check" value="${c.id}" checked>
+                        <span>${escapeHtml(c.name && c.name !== 'N/A' ? c.name : c.external_customer_id)} (${escapeHtml(c.phone || c.external_customer_id)})</span>
+                    </label>
+                `).join('');
+
+                pollAutomationStatus();
+                if (!autoPollingInterval) {
+                    autoPollingInterval = setInterval(pollAutomationStatus, 1500);
+                }
+            } catch (err) {
+                console.error('Error initializing automation:', err);
+            }
+        }
+
+        function toggleSelectAllCustomers(select) {
+            document.querySelectorAll('input[name="auto_customer_check"]').forEach(cb => cb.checked = select);
+        }
+
+        async function pollAutomationStatus() {
+            try {
+                const res = await fetch('/api/automation/status', { headers: authHeaders() });
+                if (!res.ok) return;
+                const status = await res.json();
+
+                document.getElementById('stat-auto-status').textContent = status.automation_status;
+                document.getElementById('stat-auto-waiting').textContent = status.outbound_queue.length + status.inbound_queue.length;
+                document.getElementById('stat-auto-completed').textContent = status.completed_calls;
+                document.getElementById('stat-auto-failed').textContent = status.failed_history.length;
+
+                const startBtn = document.getElementById('btn-start-auto');
+                const stopBtn = document.getElementById('btn-stop-auto');
+                const cancelCallBtn = document.getElementById('btn-stop-current-call');
+
+                startBtn.classList.toggle('hidden', status.is_running);
+                stopBtn.classList.toggle('hidden', !status.is_running);
+                cancelCallBtn.classList.toggle('hidden', !status.current_call_id);
+
+                const queueBox = document.getElementById('auto-queue-display');
+                let itemsHtml = '';
+
+                if (status.current_call_id) {
+                    itemsHtml += `
+                        <div style="background: var(--primary-light); border: 1px solid var(--primary-border); padding: 0.75rem 1rem; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <span class="badge badge-primary">IN CALL</span>
+                                <strong style="margin-left: 0.5rem;">${escapeHtml(status.current_customer_name || 'Customer')}</strong>
+                                <span style="font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem;">Call #${status.current_call_id} (${status.current_call_type})</span>
+                            </div>
+                            <span class="pulse-dot"></span>
+                        </div>
+                    `;
+                }
+
+                status.outbound_queue.forEach((cid, idx) => {
+                    const cust = allCustomers.find(c => c.id === cid);
+                    itemsHtml += `
+                        <div style="background: #ffffff; border: 1px solid var(--border); padding: 0.6rem 1rem; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between; font-size: 0.825rem;">
+                            <span>#${idx + 1} &nbsp; ${escapeHtml(cust ? (cust.name || cust.external_customer_id) : `Customer ID ${cid}`)}</span>
+                            <span class="badge badge-gray">WAITING</span>
+                        </div>
+                    `;
+                });
+
+                if (status.completed_history.length > 0) {
+                    itemsHtml += `<div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-top: 0.5rem;">RECENTLY COMPLETED:</div>`;
+                    status.completed_history.slice(-3).forEach(c => {
+                        itemsHtml += `
+                            <div style="background: var(--success-light); border: 1px solid var(--success-border); padding: 0.4rem 0.8rem; border-radius: var(--radius-sm); font-size: 0.8rem; display: flex; justify-content: space-between;">
+                                <span>✓ ${escapeHtml(c.customer_name || 'Customer')} (Call #${c.call_id})</span>
+                                <span style="color: var(--success); font-weight: 600;">Resolved</span>
+                            </div>
+                        `;
+                    });
+                }
+
+                if (!itemsHtml) {
+                    itemsHtml = `<div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius-sm);">Queue is idle. Select customers and click "START AUTOMATED CALLING".</div>`;
+                }
+
+                queueBox.innerHTML = itemsHtml;
+            } catch (err) {
+                console.error('Error polling automation status:', err);
+            }
+        }
+
+        async function startAutomatedCalling() {
+            const selected = Array.from(document.querySelectorAll('input[name="auto_customer_check"]:checked')).map(cb => parseInt(cb.value));
+            if (selected.length === 0) {
+                alert('Please select at least one customer to queue for automated calling.');
+                return;
+            }
+
+            if (!confirm(`You are about to start automated calling for ${selected.length} customers.`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/automation/start', {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ customer_ids: selected })
+                });
+                if (!res.ok) throw new Error('Failed to start automated queue');
+                pollAutomationStatus();
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        async function stopAutomatedCalling() {
+            try {
+                const res = await fetch('/api/automation/stop', { method: 'POST', headers: authHeaders() });
+                if (!res.ok) throw new Error('Failed to stop automated queue');
+                pollAutomationStatus();
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        async function stopActiveCall() {
+            try {
+                await fetch('/api/automation/stop_call', { method: 'POST', headers: authHeaders() });
+                pollAutomationStatus();
+            } catch (err) {
+                console.error('Error stopping active call:', err);
+            }
+        }
+
+        // ==========================================
+        // SECTION E: HUMAN ASSISTANCE
+        // ==========================================
+        // ==========================================
+        // SECTION E: HUMAN ASSISTANCE & CALLBACKS
+        // ==========================================
+        let cachedEscalations = [];
+        let currentEscFilter = 'all';
+
+        function filterEscalations(filter) {
+            currentEscFilter = filter;
+            ['all', 'waiting', 'callback_initiated', 'resolved'].forEach(f => {
+                const el = document.getElementById(`esc-pill-${f}`);
+                if (el) el.classList.toggle('active', f === filter);
+            });
+            renderEscalationsTable();
+        }
+
+        async function loadEscalations() {
+            const tbody = document.getElementById('escalations-tbody');
+            const emptyState = document.getElementById('escalations-empty');
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Loading human assistance requests...</td></tr>`;
+            emptyState.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/escalations', { headers: authHeaders() });
+                if (res.status === 401) return logout();
+                cachedEscalations = await res.json();
+
+                const waitingCount = cachedEscalations.filter(e => {
+                    const st = (e.status || '').toLowerCase();
+                    return st === 'waiting' || st === 'pending';
+                }).length;
+                document.getElementById('nav-escalation-count').textContent = waitingCount;
+
+                renderEscalationsTable();
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="8" style="color: var(--danger); text-align: center;">Error: ${err.message}</td></tr>`;
+            }
+        }
+
+        function renderEscalationsTable() {
+            const tbody = document.getElementById('escalations-tbody');
+            const emptyState = document.getElementById('escalations-empty');
+
+            let filtered = cachedEscalations;
+            if (currentEscFilter === 'waiting') {
+                filtered = cachedEscalations.filter(e => ['waiting', 'pending'].includes((e.status || '').toLowerCase()));
+            } else if (currentEscFilter === 'callback_initiated') {
+                filtered = cachedEscalations.filter(e => (e.status || '').toLowerCase() === 'callback_initiated');
+            } else if (currentEscFilter === 'resolved') {
+                filtered = cachedEscalations.filter(e => ['resolved', 'contacted', 'callback_completed'].includes((e.status || '').toLowerCase()));
+            }
+
+            if (!filtered || filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = filtered.map(e => {
+                const st = (e.status || '').toLowerCase();
+                let badgeClass = 'badge-amber';
+                let displayStatus = 'Waiting for Callback';
+
+                if (st === 'callback_initiated') {
+                    badgeClass = 'badge-info';
+                    displayStatus = 'Callback Initiated';
+                } else if (st === 'contacted' || st === 'callback_completed') {
+                    badgeClass = 'badge-success';
+                    displayStatus = 'Callback Completed';
+                } else if (st === 'resolved') {
+                    badgeClass = 'badge-gray';
+                    displayStatus = 'Resolved';
+                }
+
+                const lang = e.language || e.language_selected || 'en';
+                const reason = e.reason || e.escalation_reason || 'Human assistance requested';
+                const custName = e.customer_name || 'Customer';
+                const custPhone = e.customer_phone || 'N/A';
+
+                return `
+                    <tr>
+                        <td><strong>#${e.id}</strong></td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--primary-light); color: var(--primary); font-size: 0.75rem; font-weight: 700;">
+                                    ${escapeHtml(custName.charAt(0).toUpperCase())}
+                                </span>
+                                <span style="font-weight: 600;">${escapeHtml(custName)}</span>
+                            </div>
+                        </td>
+                        <td><strong>${escapeHtml(custPhone)}</strong></td>
+                        <td><span class="badge ${lang === 'Hindi' ? 'badge-primary' : lang === 'Marathi' ? 'badge-info' : 'badge-gray'}">${escapeHtml(lang)}</span></td>
+                        <td><span style="color: var(--text-main); font-size: 0.825rem;">${escapeHtml(reason)}</span></td>
+                        <td><span class="badge ${badgeClass}">${displayStatus}</span></td>
+                        <td><span style="font-size: 0.775rem; color: var(--text-muted);">${e.created_at ? new Date(e.created_at).toLocaleString() : '-'}</span></td>
+                        <td style="text-align: right;">
+                            <div style="display: flex; gap: 0.35rem; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+                                ${st === 'waiting' || st === 'pending' ? `
+                                    <button class="btn btn-call-back btn-sm" onclick="openCallbackModal(${e.id}, '${escapeHtml(custName)}', '${escapeHtml(custPhone)}', '${escapeHtml(lang)}')">
+                                        📞 Call Back
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="viewCallDetails(${e.call_id})">Transcript</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openResolveModal(${e.id}, '${escapeHtml(custName)}')">Resolve</button>
+                                ` : st === 'callback_initiated' ? `
+                                    <button class="btn btn-complete-cb btn-sm" onclick="completeCallback(${e.id})">
+                                        ✓ Complete Callback
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="viewCallDetails(${e.call_id})">Transcript</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="openResolveModal(${e.id}, '${escapeHtml(custName)}')">Resolve</button>
+                                ` : st === 'contacted' || st === 'callback_completed' ? `
+                                    <button class="btn btn-primary btn-sm" onclick="openResolveModal(${e.id}, '${escapeHtml(custName)}')">Resolve</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="viewCallDetails(${e.call_id})">Transcript</button>
+                                ` : `
+                                    <button class="btn btn-secondary btn-sm" onclick="viewCallDetails(${e.call_id})">Transcript</button>
+                                    <span style="color: var(--success); font-weight: 600; font-size: 0.8rem; margin-left: 0.25rem;">Resolved ✓</span>
+                                `}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openCallbackModal(id, name, phone, lang) {
+            document.getElementById('cb-modal-esc-id').value = id;
+            document.getElementById('cb-modal-cust-name').textContent = name;
+            document.getElementById('cb-modal-cust-phone').textContent = phone;
+            document.getElementById('cb-modal-cust-lang').textContent = lang;
+            document.getElementById('cb-modal-notes').value = '';
+            document.getElementById('modal-callback-confirm').classList.remove('hidden');
+        }
+
+        function closeCallbackModal() {
+            document.getElementById('modal-callback-confirm').classList.add('hidden');
+        }
+
+        async function confirmInitiateCallback() {
+            const id = document.getElementById('cb-modal-esc-id').value;
+            const notes = document.getElementById('cb-modal-notes').value.trim();
+            const custName = document.getElementById('cb-modal-cust-name').textContent;
+            const custPhone = document.getElementById('cb-modal-cust-phone').textContent;
+
+            try {
+                const res = await fetch(`/api/escalations/${id}/callback`, {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to initiate callback');
+
+                closeCallbackModal();
+                loadEscalations();
+
+                const statusMsg = data.telephony_active
+                    ? `📞 Live outbound call initiated to ${custName} (${custPhone})`
+                    : `📋 Callback initiated for ${custName} (${custPhone}). Telephony gateway pending configuration.`;
+                showToast(statusMsg);
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        async function completeCallback(id) {
+            try {
+                const res = await fetch(`/api/escalations/${id}/callback-complete`, {
+                    method: 'PUT',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: 'Operator completed callback with customer.' })
+                });
+                if (!res.ok) throw new Error('Failed to mark callback as completed');
+                loadEscalations();
+                showToast('✓ Callback marked as completed in support records.');
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        async function markEscalationContacted(id) {
+            try {
+                const res = await fetch(`/api/escalations/${id}/contacted`, {
+                    method: 'PUT',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: 'Marked as contacted by operator.' })
+                });
+                if (!res.ok) throw new Error('Failed to mark as contacted');
+                loadEscalations();
+                showToast('Status updated to Contacted.');
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        function openResolveModal(id, custName) {
+            document.getElementById('resolve-esc-id').value = id;
+            document.getElementById('resolve-cust-name').textContent = custName;
+            document.getElementById('resolve-notes').value = '';
+            document.getElementById('modal-resolve-esc').classList.remove('hidden');
+        }
+
+        function closeResolveModal() {
+            document.getElementById('modal-resolve-esc').classList.add('hidden');
+        }
+
+        async function submitResolveEscalation() {
+            const id = document.getElementById('resolve-esc-id').value;
+            const notes = document.getElementById('resolve-notes').value.trim();
+            try {
+                const res = await fetch(`/api/escalations/${id}/resolve`, {
+                    method: 'PUT',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes })
+                });
+                if (!res.ok) throw new Error('Failed to resolve escalation');
+                closeResolveModal();
+                loadEscalations();
+                showToast('✓ Escalation marked as resolved.');
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        async function scheduleCallback(id) {
+            // Reuses openCallbackModal if item is in cache
+            const item = cachedEscalations.find(e => e.id === id);
+            if (item) {
+                openCallbackModal(item.id, item.customer_name || 'Customer', item.customer_phone || 'N/A', item.language || 'English');
+            } else {
+                openCallbackModal(id, 'Customer', 'Registered Phone', 'English');
+            }
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            container.innerHTML = `<div class="toast-box"><span>ℹ️</span><div>${escapeHtml(message)}</div></div>`;
+            container.classList.remove('hidden');
+            setTimeout(() => {
+                container.classList.add('hidden');
+            }, 4500);
+        }
+
+        // Global Keypad Listener for IVR Language Selection (Press 1, 2, or 3)
+        window.addEventListener('keydown', (e) => {
+            if (activeLiveCall && ['1', '2', '3'].includes(e.key)) {
+                const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+                if (activeTag !== 'input' && activeTag !== 'textarea') {
+                    pressLanguageKey(e.key);
+                }
+            }
+        });
+
+        // ==========================================
+        // TELEPHONY LOGIC (PHASE 9)
+        // ==========================================
+        let telephonyPollingInterval = null;
+        let activeTelephonyCallId = null;
+        let telephonyStartTime = null;
+        let telephonyTimerInterval = null;
+
+        async function loadTelephonyView() {
+            if (!allCustomers || allCustomers.length === 0) {
+                try {
+                    const res = await fetch('/api/customers', { headers: authHeaders() });
+                    if (res.ok) allCustomers = await res.json();
+                } catch (e) {}
+            }
+            populateTelephonyCustomerDropdown();
+            await fetchTelephonyStatus();
+            await loadTelephonyHistory();
+        }
+
+        async function fetchTelephonyStatus() {
+            try {
+                const res = await fetch('/api/telephony/status', { headers: authHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const badge = document.getElementById('telephony-provider-badge');
+                const warn = document.getElementById('telephony-provider-warning');
+                const conc = document.getElementById('telephony-concurrency-badge');
+                const limit = document.getElementById('telephony-limit-badge');
+
+                if (data.active_provider === 'exotel') {
+                    badge.textContent = data.is_provider_configured ? 'Exotel Connected' : 'Exotel (Setup Required)';
+                    badge.className = data.is_provider_configured ? 'badge badge-success' : 'badge badge-warning';
+                    if (!data.is_provider_configured) warn.classList.remove('hidden');
+                    else warn.classList.add('hidden');
+                } else {
+                    badge.textContent = 'Mock Mode (Dev)';
+                    badge.className = 'badge badge-primary';
+                    warn.classList.remove('hidden');
+                    warn.innerHTML = 'ℹ️ <strong>Mock Provider Active:</strong> Calls are simulated safely without incurring telecom charges. To use real telephone lines, configure EXOTEL credentials in <code>.env</code>.';
+                }
+
+                conc.textContent = `Active Calls: ${data.active_call_count} / ${data.max_concurrent_calls}`;
+                limit.textContent = `Max Duration: ${data.max_call_duration_seconds}s`;
+            } catch (err) {
+                console.warn('Failed to load telephony status:', err);
+            }
+        }
+
+        async function verifyTelephonyProvider() {
+            showToast('Checking telephony provider connection & credentials...');
+            try {
+                const res = await fetch('/api/telephony/verify-provider', { headers: authHeaders() });
+                const data = await res.json();
+                const warn = document.getElementById('telephony-provider-warning');
+                if (data.valid) {
+                    showToast(`✓ Provider Verified: ${data.message}`);
+                    warn.classList.remove('hidden');
+                    warn.style.background = 'var(--success-light)';
+                    warn.style.borderColor = 'var(--success-border)';
+                    warn.style.color = 'var(--success)';
+                    warn.innerHTML = `✅ <strong>${data.provider.toUpperCase()} Provider Online:</strong> ${escapeHtml(data.message)} ${data.caller_id ? '(Caller ID: ' + escapeHtml(data.caller_id) + ')' : ''}`;
+                } else {
+                    showToast(`⚠️ Provider Status: ${data.message}`);
+                    warn.classList.remove('hidden');
+                    warn.style.background = 'var(--warning-light)';
+                    warn.style.borderColor = 'var(--warning-border)';
+                    warn.style.color = 'var(--warning)';
+                    warn.innerHTML = `⚠️ <strong>Configuration Alert:</strong> ${escapeHtml(data.message)}`;
+                }
+                await fetchTelephonyStatus();
+            } catch (err) {
+                showToast(`❌ Verification failed: ${err.message}`);
+            }
+        }
+
+        function populateTelephonyCustomerDropdown() {
+            const select = document.getElementById('telephony-customer-select');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- Manual Entry / New Customer --</option>';
+            allCustomers.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${c.name || 'Unnamed'} (${c.phone || c.external_customer_id})`;
+                opt.dataset.phone = c.phone || '';
+                opt.dataset.name = c.name || '';
+                select.appendChild(opt);
+            });
+        }
+
+        function onTelephonyCustomerSelected() {
+            const select = document.getElementById('telephony-customer-select');
+            const selectedOpt = select.options[select.selectedIndex];
+            if (selectedOpt && selectedOpt.value) {
+                document.getElementById('telephony-dial-phone').value = selectedOpt.dataset.phone || '';
+                document.getElementById('telephony-dial-name').value = selectedOpt.dataset.name || '';
+            }
+        }
+
+        async function initiateTelephonyCall() {
+            const phoneInput = document.getElementById('telephony-dial-phone');
+            const nameInput = document.getElementById('telephony-dial-name');
+            const selectCust = document.getElementById('telephony-customer-select');
+            const dialBtn = document.getElementById('btn-dial-telephony');
+            const msgSpan = document.getElementById('telephony-dial-msg');
+
+            const phone = phoneInput.value.trim();
+            if (!phone || phone.length < 10) {
+                msgSpan.style.color = 'var(--danger)';
+                msgSpan.textContent = 'Please enter a valid phone number (at least 10 digits).';
+                return;
+            }
+
+            dialBtn.disabled = true;
+            dialBtn.innerHTML = '<span>⏳ Connecting...</span>';
+            msgSpan.style.color = 'var(--text-muted)';
+            msgSpan.textContent = 'Submitting outbound call request...';
+
+            try {
+                const res = await fetch('/api/telephony/outbound', {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone_number: phone,
+                        customer_id: selectCust.value ? parseInt(selectCust.value) : null,
+                        customer_name: nameInput.value.trim() || null
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Call initiation failed');
+
+                msgSpan.style.color = 'var(--success)';
+                const provLabel = (data.provider || '').toLowerCase() === 'mock' ? 'SIMULATED MOCK' : 'REAL TELEPHONE';
+                msgSpan.textContent = `✓ Call initiated [${provLabel}] (ID: #${data.call_id}). Connecting...`;
+                showToast(`✓ Outbound call initiated to ${data.destination} [${provLabel}]`);
+
+                showActiveTelephonyCard(data.call_id, data.destination, data.call_sid, data.provider);
+                loadTelephonyHistory();
+            } catch (err) {
+                msgSpan.style.color = 'var(--danger)';
+                msgSpan.textContent = `Error: ${err.message}`;
+            } finally {
+                dialBtn.disabled = false;
+                dialBtn.innerHTML = '<span>📞 Dial Phone Call</span>';
+            }
+        }
+
+        function showActiveTelephonyCard(callId, destination, callSid, provider) {
+            activeTelephonyCallId = callId;
+            telephonyStartTime = Date.now();
+
+            const card = document.getElementById('telephony-active-card');
+            card.classList.remove('hidden');
+            document.getElementById('telephony-active-id').textContent = `#${callId}`;
+            document.getElementById('telephony-active-phone').textContent = destination;
+            document.getElementById('telephony-active-sid').textContent = callSid || 'Pending';
+            document.getElementById('telephony-active-status').textContent = 'QUEUED';
+            document.getElementById('telephony-active-status').className = 'badge badge-warning';
+
+            const modeBadge = document.getElementById('telephony-active-provider-mode');
+            if (modeBadge) {
+                const isMock = (provider || 'mock').toLowerCase() === 'mock';
+                modeBadge.textContent = isMock ? '🧪 SIMULATED MOCK' : '📞 REAL TELEPHONE';
+                modeBadge.className = isMock ? 'badge badge-primary' : 'badge badge-success';
+            }
+
+            clearInterval(telephonyTimerInterval);
+            telephonyTimerInterval = setInterval(updateTelephonyTimer, 1000);
+
+            clearInterval(telephonyPollingInterval);
+            telephonyPollingInterval = setInterval(() => pollTelephonyStatus(callId), 2500);
+        }
+
+        function updateTelephonyTimer() {
+            if (!telephonyStartTime) return;
+            const elapsed = Math.floor((Date.now() - telephonyStartTime) / 1000);
+            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const secs = String(elapsed % 60).padStart(2, '0');
+            document.getElementById('telephony-active-timer').textContent = `${mins}:${secs}`;
+        }
+
+        async function pollTelephonyStatus(callId) {
+            try {
+                const res = await fetch(`/api/calls/${callId}`, { headers: authHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                const call = data.call;
+
+                const statusBadge = document.getElementById('telephony-active-status');
+                const langSpan = document.getElementById('telephony-active-lang');
+
+                if (call.language) {
+                    langSpan.textContent = call.language;
+                }
+
+                const s = (call.status || '').toLowerCase();
+                statusBadge.textContent = call.status.toUpperCase();
+
+                if (['in_progress', 'answered'].includes(s)) {
+                    statusBadge.className = 'badge badge-success';
+                } else if (['ringing', 'queued', 'awaiting_language'].includes(s)) {
+                    statusBadge.className = 'badge badge-warning';
+                } else if (['completed', 'resolved'].includes(s)) {
+                    statusBadge.className = 'badge badge-primary';
+                    stopActiveTelephonySession('Call Completed');
+                } else if (['failed', 'canceled', 'busy', 'no_answer'].includes(s)) {
+                    statusBadge.className = 'badge badge-danger';
+                    stopActiveTelephonySession('Call Terminated');
+                } else if (['escalated', 'human_transferred'].includes(s)) {
+                    statusBadge.className = 'badge badge-danger';
+                    langSpan.textContent = `${call.language} (Transferred to Human Assistance)`;
+                    stopActiveTelephonySession('Transferred to Human Assistance');
+                }
+            } catch (err) {
+                console.warn('Telephony polling error:', err);
+            }
+        }
+
+        function stopActiveTelephonySession(reason) {
+            clearInterval(telephonyPollingInterval);
+            clearInterval(telephonyTimerInterval);
+            telephonyPollingInterval = null;
+            telephonyTimerInterval = null;
+            activeTelephonyCallId = null;
+
+            setTimeout(() => {
+                const card = document.getElementById('telephony-active-card');
+                if (card) card.classList.add('hidden');
+                loadTelephonyHistory();
+                fetchTelephonyStatus();
+            }, 3000);
+
+            showToast(`ℹ️ Telephony: ${reason}`);
+        }
+
+        async function hangupCurrentTelephonyCall() {
+            if (!activeTelephonyCallId) return;
+            const btn = document.getElementById('btn-hangup-telephony');
+            btn.disabled = true;
+            btn.textContent = 'Hanging up...';
+
+            try {
+                const res = await fetch(`/api/telephony/calls/${activeTelephonyCallId}/hangup`, {
+                    method: 'POST',
+                    headers: authHeaders()
+                });
+                if (!res.ok) throw new Error('Hang up failed');
+                stopActiveTelephonySession('Call Ended by User');
+            } catch (err) {
+                alert(`Error ending call: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🛑 Hang Up Call';
+            }
+        }
+
+        async function loadTelephonyHistory() {
+            try {
+                const res = await fetch('/api/telephony/calls', { headers: authHeaders() });
+                if (!res.ok) return;
+                const calls = await res.json();
+
+                const tbody = document.getElementById('telephony-history-tbody');
+                const empty = document.getElementById('telephony-history-empty');
+
+                tbody.innerHTML = '';
+                if (!calls || calls.length === 0) {
+                    empty.classList.remove('hidden');
+                    return;
+                }
+                empty.classList.add('hidden');
+
+                calls.forEach(c => {
+                    const tr = document.createElement('tr');
+                    const phone = c.destination_phone || c.caller_phone || 'N/A';
+                    const dur = c.duration_seconds != null ? `${c.duration_seconds}s` : '-';
+                    const dt = c.started_at ? new Date(c.started_at).toLocaleString() : '-';
+
+                    let badgeClass = 'badge-gray';
+                    const st = (c.status || '').toLowerCase();
+                    if (['in_progress', 'answered'].includes(st)) badgeClass = 'badge-success';
+                    else if (['queued', 'ringing'].includes(st)) badgeClass = 'badge-warning';
+                    else if (['completed', 'resolved'].includes(st)) badgeClass = 'badge-primary';
+                    else if (['failed', 'canceled', 'busy', 'no_answer'].includes(st)) badgeClass = 'badge-danger';
+                    else if (['escalated', 'human_transferred'].includes(st)) badgeClass = 'badge-danger';
+
+                    const isMock = (c.provider || '').toLowerCase() === 'mock';
+                    const provBadge = isMock
+                        ? '<span class="badge badge-primary">🧪 Mock (Simulated)</span>'
+                        : '<span class="badge badge-success">📞 Exotel (PSTN)</span>';
+
+                    tr.innerHTML = `
+                        <td><strong>#${c.id}</strong></td>
+                        <td><span class="badge ${c.call_type === 'OUTBOUND' ? 'badge-primary' : 'badge-warning'}">${c.call_type}</span></td>
+                        <td>${provBadge}</td>
+                        <td><strong>${escapeHtml(phone)}</strong></td>
+                        <td><span class="badge ${badgeClass}">${escapeHtml(c.status)}</span></td>
+                        <td>${dur}</td>
+                        <td style="font-size: 0.8rem; color: var(--text-muted);">${dt}</td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="openCallDetails(${c.id})">🔍 View Details</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.warn('Error loading telephony history:', err);
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.toString().replace(/[&<>"']/g, m => map[m]);
+        }
+
+        checkAuth();
+    </script>
+</body>
+</html>

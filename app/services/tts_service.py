@@ -65,8 +65,14 @@ class TTSService:
             return self._synthesize_native_indic(text.strip(), "mr-IN-AarohiNeural", output_path)
         else:
             # English (Option 1) - Existing proven Piper TTS model
+            sample_rate = 22050
+            if hasattr(self.voice, "config") and hasattr(self.voice.config, "sample_rate") and self.voice.config.sample_rate:
+                sample_rate = self.voice.config.sample_rate
             with wave.open(output_path, "wb") as wav_file:
-                self.voice.synthesize_wav(text.strip(), wav_file)
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(sample_rate)
+                self.voice.synthesize_wav(text.strip(), wav_file, set_wav_format=False)
             return output_path
 
     def _synthesize_native_indic(self, text: str, voice_name: str, output_path: str) -> str:
