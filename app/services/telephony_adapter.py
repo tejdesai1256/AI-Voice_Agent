@@ -310,12 +310,13 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
         subdomain: Optional[str] = None,
         webhook_secret: Optional[str] = None,
     ):
-        self.account_sid = account_sid or os.getenv("EXOTEL_ACCOUNT_SID", "")
-        self.api_key = api_key or os.getenv("EXOTEL_API_KEY", "")
-        self.api_token = api_token or os.getenv("EXOTEL_API_TOKEN", "")
-        self.caller_id = caller_id or os.getenv("EXOTEL_CALLER_ID", "")
-        self.subdomain = subdomain or os.getenv("EXOTEL_SUBDOMAIN", "api.in.exotel.com")
-        self.webhook_secret = webhook_secret or os.getenv("EXOTEL_WEBHOOK_SECRET", "")
+        self.account_sid = (account_sid or os.getenv("EXOTEL_ACCOUNT_SID", "")).strip()
+        self.api_key = (api_key or os.getenv("EXOTEL_API_KEY", "")).strip()
+        self.api_token = (api_token or os.getenv("EXOTEL_API_TOKEN", "")).strip()
+        raw_caller = (caller_id or os.getenv("EXOTEL_CALLER_ID", "")).strip()
+        self.caller_id = raw_caller.replace("-", "").replace(" ", "")
+        self.subdomain = (subdomain or os.getenv("EXOTEL_SUBDOMAIN", "api.exotel.com")).strip()
+        self.webhook_secret = (webhook_secret or os.getenv("EXOTEL_WEBHOOK_SECRET", "")).strip()
 
     @property
     def base_url(self) -> str:
@@ -363,20 +364,22 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
         public_base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
         callback_url = f"{public_base}/api/telephony/webhook/exotel" if public_base else ""
 
-        # For Exotel connect.json, 'Url' must be an HTTP/HTTPS URL returning ExOMl XML instructions
-        call_connect_url = stream_url
-        if stream_url.startswith(("wss://", "ws://")) or (public_base and not stream_url.startswith(("http://", "https://"))):
-            call_connect_url = f"{public_base}/api/telephony/calls/{call_id}/connect"
+        # Exotel Connect Voice AI requires StreamUrl (wss://) and StreamType (bidirectional)
+        ws_stream_url = stream_url
+        if ws_stream_url.startswith("https://"):
+            ws_stream_url = ws_stream_url.replace("https://", "wss://")
+        elif ws_stream_url.startswith("http://"):
+            ws_stream_url = ws_stream_url.replace("http://", "ws://")
 
         payload = {
             "From": normalized_to,
             "CallerId": self.caller_id,
-            "Url": call_connect_url,
+            "StreamUrl": ws_stream_url,
+            "StreamType": "bidirectional",
             "CustomField": str(call_id),
         }
         if callback_url:
             payload["StatusCallback"] = callback_url
-            payload["StatusCallbackEvents"] = "terminal,answered"
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
@@ -401,12 +404,24 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                 else:
                     err_msg = f"Exotel API error HTTP {res.status_code}: {res.text}"
                     print(f"[Telephony Warning] {err_msg}")
+                    detail = f"Exotel call initiation failed with status {res.status_code}"
+                    try:
+                        err_json = res.json()
+                        rest_exc = err_json.get("RestException", {})
+                        if rest_exc.get("Message"):
+                            msg = rest_exc.get("Message").strip()
+                            if "KYC" in msg:
+                                detail = "Exotel trial account requires KYC verification to dial external numbers. In trial mode, only your registered admin number (+919579228277) can be dialed."
+                            else:
+                                detail = f"Exotel: {msg}"
+                    except Exception:
+                        pass
                     return TelephonyCallResult(
                         success=False,
                         call_sid=None,
                         provider="exotel",
                         status="failed",
-                        error_message=f"Exotel call initiation failed with status {res.status_code}",
+                        error_message=detail,
                         raw_response={"status_code": res.status_code, "body": res.text},
                     )
         except httpx.TimeoutException:
