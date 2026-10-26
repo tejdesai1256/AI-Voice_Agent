@@ -356,7 +356,7 @@ def test_telephony_suite():
     # -------------------------------------------------------------------------
     # 17. Provider KYC Compliance Restriction & Authentication Error Handling
     # -------------------------------------------------------------------------
-    print("\n[17/21] Testing KYC Compliance Restriction & Auth Errors...")
+    print("\n[17/23] Testing KYC Compliance Restriction & Auth Errors...")
     from unittest.mock import patch, MagicMock
     configured_adapter = ExotelTelephonyAdapter(
         account_sid="test_sid",
@@ -382,9 +382,28 @@ def test_telephony_suite():
             configured_adapter.start_outbound_call("+919876543210", 888, "wss://test/stream")
         )
         assert not res_kyc.success
+        assert res_kyc.error_type == "KYC_RESTRICTION"
         assert "kyc" in res_kyc.error_message.lower()
         assert "compliance" in res_kyc.error_message.lower()
         print(f"  [PASS] Provider KYC compliance restriction correctly identified: '{res_kyc.error_message[:65]}...'")
+
+    # Mock 403 International Calling Restriction response
+    mock_intl = MagicMock()
+    mock_intl.status_code = 403
+    mock_intl.text = '{"RestException": {"Status": 403, "Message": "International dialing is disabled for this account."}}'
+    mock_intl.json.return_value = {
+        "RestException": {
+            "Status": 403,
+            "Message": "International dialing is disabled for this account.",
+        }
+    }
+    with patch("httpx.AsyncClient.post", return_value=mock_intl):
+        res_intl = loop.run_until_complete(
+            configured_adapter.start_outbound_call("+14155552671", 889, "wss://test/stream")
+        )
+        assert not res_intl.success
+        assert res_intl.error_type == "INTERNATIONAL_RESTRICTION"
+        print(f"  [PASS] International calling restriction correctly classified: {res_intl.error_type}")
 
     # Mock 401 Unauthorized response on credential verification
     mock_401 = MagicMock()
@@ -396,10 +415,103 @@ def test_telephony_suite():
         assert verify_401["status_code"] == 401
         print("  [PASS] Provider HTTP 401 authentication rejection correctly identified")
 
+    # Mock verification with KYC restriction in Exotel metadata
+    mock_kyc_verify = MagicMock()
+    mock_kyc_verify.status_code = 200
+    mock_kyc_verify.json.return_value = {
+        "Account": {"Status": "active", "kyc_status": "pending_documents"}
+    }
+    with patch("httpx.AsyncClient.get", return_value=mock_kyc_verify):
+        verify_kyc = loop.run_until_complete(configured_adapter.verify_credentials())
+        assert not verify_kyc["valid"]
+        assert verify_kyc["kyc_compliant"] is False
+        print("  [PASS] Provider verification flags unverified KYC status correctly")
+
     # -------------------------------------------------------------------------
-    # 18. Provider Timeout Handling & Server Error Resilience
+    # 18. End-to-End API KYC and Provider Restriction Outbound Handling
     # -------------------------------------------------------------------------
-    print("\n[18/21] Testing Provider Timeout & Server Error Handling...")
+    print("\n[18/23] Testing End-to-End Outbound API KYC Handling & DB Failure Audit...")
+    from app.services.telephony_adapter import TelephonyCallResult
+    with patch.object(
+        ExotelTelephonyAdapter,
+        "is_configured",
+        return_value=True,
+    ), patch.object(
+        ExotelTelephonyAdapter,
+        "start_outbound_call",
+        return_value=TelephonyCallResult(
+            success=False,
+            error_message="Exotel account compliance restriction: Your account is not yet KYC compliant. This is mandatory before making outbound calls. Please submit business KYC verification documents on the Exotel console (my.exotel.com).",
+            error_type="KYC_RESTRICTION",
+        ),
+    ):
+        kyc_api_res = client.post(
+            "/api/telephony/outbound",
+            json={"phone_number": "+919876543999", "provider": "exotel"},
+            headers=headers,
+        )
+        assert kyc_api_res.status_code == 403, f"Expected 403 Forbidden for KYC error, got {kyc_api_res.status_code}: {kyc_api_res.text}"
+        assert "kyc compliant" in kyc_api_res.text.lower()
+
+        # Verify call was recorded in database as 'failed' with error_code 'KYC_RESTRICTION'
+        with SessionLocal() as db:
+            failed_call = db.query(Call).filter(Call.destination_phone == "+919876543999").order_by(Call.id.desc()).first()
+            assert failed_call is not None, "Failed call was not recorded in DB!"
+            assert failed_call.status == "failed", f"Expected status 'failed', got '{failed_call.status}'"
+            assert failed_call.error_code == "KYC_RESTRICTION", f"Expected error_code 'KYC_RESTRICTION', got '{failed_call.error_code}'"
+            assert failed_call.ended_at is not None, "Failed call ended_at must be populated"
+            assert failed_call.provider == "exotel", f"Provider must be recorded as 'exotel', got '{failed_call.provider}'"
+        print("  [PASS] E2E KYC outbound call rejected with 403, recorded as 'failed', and NOT marked successful")
+
+    # -------------------------------------------------------------------------
+    # 19. Provider Selector & No Silent Fallback Guarantee
+    # -------------------------------------------------------------------------
+    print("\n[19/23] Testing Provider Selector Endpoint & No Silent Fallback Guarantee...")
+    # Set to exotel
+    set_exo = client.post("/api/telephony/provider", json={"provider": "exotel"}, headers=headers)
+    assert set_exo.status_code == 200 and set_exo.json()["active_provider"] == "exotel"
+    
+    # Query status
+    st_exo = client.get("/api/telephony/status", headers=headers)
+    assert st_exo.json()["active_provider"] == "exotel"
+    assert "mock" in st_exo.json()["providers_available"]
+    assert "exotel" in st_exo.json()["providers_available"]
+
+    # When an Exotel call fails, verify active_provider remains exotel (never silently switched)
+    with patch.object(
+        ExotelTelephonyAdapter,
+        "is_configured",
+        return_value=True,
+    ), patch.object(
+        ExotelTelephonyAdapter,
+        "start_outbound_call",
+        return_value=TelephonyCallResult(
+            success=False,
+            error_message="KYC blocked",
+            error_type="KYC_RESTRICTION",
+        ),
+    ):
+        fail_res = client.post(
+            "/api/telephony/outbound",
+            json={"phone_number": "+919876543888"},
+            headers=headers,
+        )
+        assert fail_res.status_code == 403
+        st_after_fail = client.get("/api/telephony/status", headers=headers)
+        assert st_after_fail.json()["active_provider"] == "exotel", "Provider was silently switched to mock after failure!"
+        print("  [PASS] Active provider preserved as Exotel after call failure (No silent fallback)")
+
+    # Switch back to mock mode
+    set_mock = client.post("/api/telephony/provider", json={"provider": "mock"}, headers=headers)
+    assert set_mock.status_code == 200 and set_mock.json()["active_provider"] == "mock"
+    st_mock = client.get("/api/telephony/status", headers=headers)
+    assert st_mock.json()["active_provider"] == "mock"
+    print("  [PASS] Dynamic runtime provider switching verified ('mock' <-> 'exotel')")
+
+    # -------------------------------------------------------------------------
+    # 20. Provider Timeout Handling & Server Error Resilience
+    # -------------------------------------------------------------------------
+    print("\n[20/23] Testing Provider Timeout & Server Error Handling...")
     import httpx
     with patch("httpx.AsyncClient.post", side_effect=httpx.TimeoutException("Connection timed out")):
         res_timeout = loop.run_until_complete(
@@ -422,9 +534,9 @@ def test_telephony_suite():
         print("  [PASS] Provider HTTP 500 server error safely captured")
 
     # -------------------------------------------------------------------------
-    # 19. Unknown CallSid & Duplicate Webhook Resilience
+    # 21. Unknown CallSid & Duplicate Webhook Resilience
     # -------------------------------------------------------------------------
-    print("\n[19/21] Testing Unknown Provider CallSid & Duplicate Webhook Resilience...")
+    print("\n[21/23] Testing Unknown Provider CallSid & Duplicate Webhook Resilience...")
     unk_res = client.post(
         "/api/telephony/webhook/exotel",
         data={"CallSid": "unknown_sid_99999", "Status": "completed", "CustomField": "999999"},
@@ -446,9 +558,9 @@ def test_telephony_suite():
     print("  [PASS] Unknown CallSid ignored cleanly and duplicate webhook handled idempotently")
 
     # -------------------------------------------------------------------------
-    # 20. Resource Cleanup & Terminal Call State Enforcement
+    # 22. Resource Cleanup & Terminal Call State Enforcement
     # -------------------------------------------------------------------------
-    print("\n[20/21] Testing Resource Cleanup & Terminal Call State Enforcement...")
+    print("\n[22/23] Testing Resource Cleanup & Terminal Call State Enforcement...")
     with SessionLocal() as db:
         c_term = db.query(Call).filter(Call.id == call_id).first()
         assert c_term.ended_at is not None
@@ -458,9 +570,9 @@ def test_telephony_suite():
     print("  [PASS] Terminal call state preserved and resources cleanly reclaimed")
 
     # -------------------------------------------------------------------------
-    # 21. Audio Pipeline Error & Edge Case Handling
+    # 23. Audio Pipeline Error & Edge Case Handling
     # -------------------------------------------------------------------------
-    print("\n[21/21] Testing Audio Pipeline Edge Cases...")
+    print("\n[23/23] Testing Audio Pipeline Edge Cases...")
     missing_pcm = wav_to_pcm_bytes("non_existent_audio_file.wav")
     assert missing_pcm == b"", "Expected empty bytes for missing audio file"
     empty_wav = pcm_to_wav_bytes(b"", sample_rate=16000)
@@ -470,7 +582,7 @@ def test_telephony_suite():
     print("  [PASS] Audio utility error handling and boundary conditions verified")
 
     print("\n========================================================")
-    print("ALL 21 TELEPHONY LAYER TESTS PASSED 100% SUCCESSFULLY!")
+    print("ALL 23 TELEPHONY LAYER TESTS PASSED 100% SUCCESSFULLY!")
     print("========================================================")
 
 

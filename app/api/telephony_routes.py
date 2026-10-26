@@ -20,6 +20,25 @@ class OutboundCallRequest(BaseModel):
     phone_number: str
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
+    provider: Optional[str] = None
+
+
+class SetProviderRequest(BaseModel):
+    provider: str
+
+
+@router.post("/provider")
+def set_telephony_provider(
+    body: SetProviderRequest,
+    current_user: SystemUser = Depends(get_current_user),
+):
+    """
+    Explicitly switches active telephony provider between 'mock' and 'exotel'.
+    """
+    try:
+        return telephony_service.set_active_provider(body.provider)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/outbound")
@@ -36,6 +55,7 @@ async def initiate_outbound_telephony_call(
     phone_number = None
     customer_id = None
     customer_name = None
+    provider = None
 
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
@@ -44,6 +64,7 @@ async def initiate_outbound_telephony_call(
             phone_number = body.get("phone_number")
             customer_id = body.get("customer_id")
             customer_name = body.get("customer_name")
+            provider = body.get("provider")
         except Exception:
             pass
     else:
@@ -53,6 +74,7 @@ async def initiate_outbound_telephony_call(
             cid = form.get("customer_id")
             customer_id = int(cid) if cid and str(cid).isdigit() else None
             customer_name = form.get("customer_name")
+            provider = form.get("provider")
         except Exception:
             pass
 
@@ -64,12 +86,17 @@ async def initiate_outbound_telephony_call(
         destination_phone=str(phone_number).strip(),
         customer_id=customer_id,
         customer_name=customer_name,
+        provider=provider,
     )
 
     if not result.get("success"):
         code = result.get("code")
         status_code = 400
-        if code == "CONCURRENCY_LIMIT_EXCEEDED":
+        if code in ("KYC_RESTRICTION", "INTERNATIONAL_RESTRICTION", "TRIAL_RESTRICTION"):
+            status_code = 403
+        elif code == "AUTH_ERROR":
+            status_code = 401
+        elif code == "CONCURRENCY_LIMIT_EXCEEDED":
             status_code = 429
         elif code == "DUPLICATE_CALL_IN_PROGRESS":
             status_code = 409

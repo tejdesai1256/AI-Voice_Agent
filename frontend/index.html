@@ -1662,7 +1662,14 @@
                                 </h2>
                                 <p class="card-desc">Live mobile carrier connections via Exotel Connect Voice AI & real-time AgentStream WebSocket.</p>
                             </div>
-                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                <div style="display: flex; align-items: center; gap: 0.4rem; background: var(--color-surface); padding: 0.25rem 0.5rem; border-radius: var(--radius-control); border: 1px solid var(--color-border);">
+                                    <label for="telephony-provider-select" style="font-size: 0.75rem; font-weight: 600; color: var(--color-text-secondary); margin: 0;">Provider:</label>
+                                    <select id="telephony-provider-select" class="form-control" style="padding: 0.2rem 0.4rem; font-size: 0.78rem; height: auto; width: auto;" onchange="changeTelephonyProvider(this.value)">
+                                        <option value="mock">🧪 Mock Telephony (Safe Testing)</option>
+                                        <option value="exotel">📞 Exotel PSTN (Live Carrier)</option>
+                                    </select>
+                                </div>
                                 <span class="badge badge-success" id="telephony-provider-badge">Exotel Connected</span>
                                 <span class="badge badge-gray" id="telephony-concurrency-badge">Active Calls: 0 / 5</span>
                                 <span class="badge badge-gray" id="telephony-limit-badge">Max Duration: 600s</span>
@@ -1671,6 +1678,26 @@
                                 </button>
                                 <button class="btn btn-secondary btn-sm" onclick="loadTelephonyView()">
                                     🔄 Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- KYC Compliance Warning Card -->
+                        <div id="telephony-kyc-alert" class="hidden" style="margin-bottom: 1.25rem; background: #fff5f5; border: 1.5px solid #feb2b2; border-radius: var(--radius-control); padding: 1rem 1.25rem; color: #9b2c2c;">
+                            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                                <div>
+                                    <div style="font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+                                        <span>🛑</span> Exotel Compliance Notice: KYC Verification Mandatory
+                                    </div>
+                                    <div style="font-size: 0.8125rem; margin-top: 0.4rem; line-height: 1.4; color: #742a2a;" id="telephony-kyc-alert-text">
+                                        Your Exotel account is not yet KYC compliant. Telecom regulations mandate approved KYC verification before outbound telephone calls can be placed through Exotel carrier lines.
+                                    </div>
+                                    <div style="margin-top: 0.5rem; font-size: 0.775rem; color: #742a2a;">
+                                        <strong>Action required:</strong> Complete and submit business KYC verification on the <a href="https://my.exotel.com" target="_blank" rel="noopener noreferrer" style="color: #c53030; text-decoration: underline; font-weight: 600;">Exotel Console</a>. While KYC approval is pending, you can continue full voice AI testing with <strong>Mock Telephony</strong>.
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary btn-sm" onclick="changeTelephonyProvider('mock')" style="white-space: nowrap; flex-shrink: 0; background-color: #3182ce; border-color: #3182ce;">
+                                    🧪 Switch to Mock Mode
                                 </button>
                             </div>
                         </div>
@@ -2634,7 +2661,12 @@
                 document.getElementById('detail-call-id').textContent = `#${c.id || callId}`;
                 document.getElementById('detail-cust-name').textContent = cust.name || 'N/A';
                 document.getElementById('detail-cust-phone').textContent = cust.phone || c.destination_phone || 'N/A';
-                document.getElementById('detail-status').textContent = c.status || 'UNKNOWN';
+                const statusText = c.status || 'UNKNOWN';
+                if (c.error_code && statusText.toLowerCase() === 'failed') {
+                    document.getElementById('detail-status').innerHTML = `${escapeHtml(statusText)} <span style="font-size: 0.8rem; color: var(--color-danger); font-weight: normal; margin-left: 0.5rem;">[${escapeHtml(c.error_code)}]</span>`;
+                } else {
+                    document.getElementById('detail-status').textContent = statusText;
+                }
                 document.getElementById('detail-language').textContent = c.language || 'English';
                 document.getElementById('detail-duration').textContent = c.duration_seconds != null ? `${c.duration_seconds}s` : '-';
                 document.getElementById('detail-started').textContent = c.started_at ? new Date(c.started_at).toLocaleString() : 'N/A';
@@ -3518,6 +3550,27 @@
             await loadTelephonyHistory();
         }
 
+        async function changeTelephonyProvider(newProvider) {
+            try {
+                const res = await fetch('/api/telephony/provider', {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: newProvider })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to switch provider');
+                showToast(`✓ Active telephony provider changed to ${newProvider.toUpperCase()}`);
+
+                if (newProvider === 'mock') {
+                    const kycAlert = document.getElementById('telephony-kyc-alert');
+                    if (kycAlert) kycAlert.classList.add('hidden');
+                }
+                await fetchTelephonyStatus();
+            } catch (err) {
+                showToast(`❌ Provider switch error: ${err.message}`);
+            }
+        }
+
         async function fetchTelephonyStatus() {
             try {
                 const res = await fetch('/api/telephony/status', { headers: authHeaders() });
@@ -3528,6 +3581,11 @@
                 const warn = document.getElementById('telephony-provider-warning');
                 const conc = document.getElementById('telephony-concurrency-badge');
                 const limit = document.getElementById('telephony-limit-badge');
+                const provSelect = document.getElementById('telephony-provider-select');
+
+                if (provSelect && data.active_provider) {
+                    provSelect.value = data.active_provider;
+                }
 
                 if (data.active_provider === 'exotel') {
                     badge.textContent = data.is_provider_configured ? 'Exotel Connected' : 'Exotel (Setup Required)';
@@ -3538,7 +3596,7 @@
                     badge.textContent = 'Mock Mode (Dev)';
                     badge.className = 'badge badge-primary';
                     warn.classList.remove('hidden');
-                    warn.innerHTML = 'ℹ️ <strong>Mock Provider Active:</strong> Calls are simulated safely without incurring telecom charges. To use real telephone lines, configure EXOTEL credentials in <code>.env</code>.';
+                    warn.innerHTML = 'ℹ️ <strong>Mock Provider Active:</strong> Calls are simulated safely without telecom charges. You can test complete conversational voice AI flows.';
                 }
 
                 conc.textContent = `Active Calls: ${data.active_call_count} / ${data.max_concurrent_calls}`;
@@ -3554,6 +3612,7 @@
                 const res = await fetch('/api/telephony/verify-provider', { headers: authHeaders() });
                 const data = await res.json();
                 const warn = document.getElementById('telephony-provider-warning');
+                const kycAlert = document.getElementById('telephony-kyc-alert');
                 warn.classList.remove('hidden');
 
                 if (data.valid) {
@@ -3562,12 +3621,19 @@
                     warn.style.borderColor = 'var(--color-success-border)';
                     warn.style.color = 'var(--color-success)';
                     warn.innerHTML = `✅ <strong>${data.provider.toUpperCase()} Provider Online:</strong> ${escapeHtml(data.message)} ${data.caller_id ? '(Caller ID: ' + escapeHtml(data.caller_id) + ')' : ''}`;
+                    if (kycAlert) kycAlert.classList.add('hidden');
                 } else {
                     showToast(`⚠️ Provider Status: ${data.message}`);
                     warn.style.background = 'var(--color-warning-bg)';
                     warn.style.borderColor = 'var(--color-warning-border)';
                     warn.style.color = 'var(--color-warning)';
                     warn.innerHTML = `⚠️ <strong>Configuration Alert:</strong> ${escapeHtml(data.message)}`;
+
+                    if (data.provider === 'exotel' && data.kyc_compliant === false && kycAlert) {
+                        kycAlert.classList.remove('hidden');
+                        const kycText = document.getElementById('telephony-kyc-alert-text');
+                        if (kycText && data.message) kycText.textContent = data.message;
+                    }
                 }
                 await fetchTelephonyStatus();
             } catch (err) {
@@ -3604,6 +3670,8 @@
             const selectCust = document.getElementById('telephony-customer-select');
             const dialBtn = document.getElementById('btn-dial-telephony');
             const msgSpan = document.getElementById('telephony-dial-msg');
+            const provSelect = document.getElementById('telephony-provider-select');
+            const selectedProvider = provSelect ? provSelect.value : undefined;
 
             const phone = phoneInput.value.trim();
             if (!phone || phone.length < 10) {
@@ -3618,18 +3686,32 @@
             msgSpan.textContent = 'Submitting outbound call request...';
 
             try {
+                const reqBody = {
+                    phone_number: phone,
+                    customer_id: selectCust.value ? parseInt(selectCust.value) : null,
+                    customer_name: nameInput.value.trim() || null
+                };
+                if (selectedProvider) reqBody.provider = selectedProvider;
+
                 const res = await fetch('/api/telephony/outbound', {
                     method: 'POST',
                     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        phone_number: phone,
-                        customer_id: selectCust.value ? parseInt(selectCust.value) : null,
-                        customer_name: nameInput.value.trim() || null
-                    })
+                    body: JSON.stringify(reqBody)
                 });
 
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Call initiation failed');
+                if (!res.ok) {
+                    const errDetail = data.detail || 'Call initiation failed';
+                    if (errDetail.toLowerCase().includes('kyc') || res.status === 403) {
+                        const kycAlert = document.getElementById('telephony-kyc-alert');
+                        if (kycAlert) {
+                            kycAlert.classList.remove('hidden');
+                            const kycText = document.getElementById('telephony-kyc-alert-text');
+                            if (kycText) kycText.textContent = errDetail;
+                        }
+                    }
+                    throw new Error(errDetail);
+                }
 
                 msgSpan.style.color = 'var(--color-success)';
                 const provLabel = (data.provider || '').toLowerCase() === 'mock' ? 'SIMULATED MOCK' : 'REAL TELEPHONE';
@@ -3640,7 +3722,9 @@
                 loadTelephonyHistory();
             } catch (err) {
                 msgSpan.style.color = 'var(--color-danger)';
-                msgSpan.textContent = `Error: ${err.message}`;
+                msgSpan.textContent = `❌ ${err.message}`;
+                showToast(`⚠️ Call Failed: ${err.message}`);
+                loadTelephonyHistory();
             } finally {
                 dialBtn.disabled = false;
                 dialBtn.innerHTML = '<span>📞 Dial Phone Call</span>';
@@ -3790,12 +3874,17 @@
                         ? '<span class="badge badge-primary">🧪 Mock</span>'
                         : '<span class="badge badge-success">📞 Exotel</span>';
 
+                    let errorInfo = '';
+                    if (c.error_code && st === 'failed') {
+                        errorInfo = `<div style="font-size: 0.72rem; color: var(--color-danger); font-weight: 600; margin-top: 3px;" title="${escapeHtml(c.error_code)}">⚠️ ${escapeHtml(c.error_code)}</div>`;
+                    }
+
                     tr.innerHTML = `
                         <td><strong>#${c.id}</strong></td>
                         <td><span class="badge ${c.call_type === 'OUTBOUND' ? 'badge-primary' : 'badge-warning'}">${c.call_type}</span></td>
                         <td>${provBadge}</td>
                         <td><strong>${escapeHtml(phone)}</strong></td>
-                        <td><span class="badge ${badgeClass}">${escapeHtml(c.status)}</span></td>
+                        <td><span class="badge ${badgeClass}">${escapeHtml(c.status)}</span>${errorInfo}</td>
                         <td>${dur}</td>
                         <td style="font-size: 0.8125rem; color: var(--color-text-secondary);">${dt}</td>
                         <td>

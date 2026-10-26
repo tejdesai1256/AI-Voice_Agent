@@ -14,10 +14,11 @@ from app.utils.phone_utils import normalize_phone_number, mask_phone_number
 @dataclass
 class TelephonyCallResult:
     success: bool
-    call_sid: Optional[str]
-    provider: str
-    status: str
+    call_sid: Optional[str] = None
+    provider: str = "mock"
+    status: str = "queued"
     error_message: Optional[str] = None
+    error_type: Optional[str] = None
     raw_response: Optional[Dict[str, Any]] = None
 
 
@@ -416,28 +417,46 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                 else:
                     err_msg = f"Exotel API error HTTP {res.status_code}: {res.text}"
                     print(f"[Telephony Warning] {err_msg}")
-                    detail = f"Exotel call initiation failed with status {res.status_code}"
+                    error_type = "PROVIDER_ERROR"
+                    raw_msg_str = ""
                     try:
                         err_json = res.json()
                         rest_exc = err_json.get("RestException", {})
                         raw_msg = rest_exc.get("Message") or err_json.get("message") or err_json.get("error")
                         if raw_msg:
                             raw_msg_str = str(raw_msg).strip()
-                            if "kyc" in raw_msg_str.lower():
-                                detail = (
-                                    f"Exotel account compliance restriction: {raw_msg_str}. "
-                                    "Provider KYC verification is mandatory before making outbound calls."
-                                )
-                            else:
-                                detail = f"Exotel: {raw_msg_str}"
                     except Exception:
-                        if "kyc" in res.text.lower():
+                        raw_msg_str = res.text.strip() if res.text else ""
+
+                    lowered = raw_msg_str.lower()
+                    if res.status_code == 401:
+                        error_type = "AUTH_ERROR"
+                        detail = "Exotel authentication failed (HTTP 401): Invalid API Key or Token."
+                    elif res.status_code == 403:
+                        if "kyc" in lowered:
+                            error_type = "KYC_RESTRICTION"
                             detail = (
-                                "Exotel account compliance restriction: Account is not yet KYC compliant. "
-                                "Provider KYC verification is mandatory before making outbound calls."
+                                f"Exotel account compliance restriction: {raw_msg_str}. "
+                                "Outbound calls to external numbers are blocked until Exotel completes account verification. "
+                                "You can continue testing all AI voice features in Mock Telephony mode."
                             )
-                        elif res.text:
-                            detail = f"Exotel error (HTTP {res.status_code}): {res.text[:200]}"
+                        elif any(term in lowered for term in ["international", "isd", "country"]):
+                            error_type = "INTERNATIONAL_RESTRICTION"
+                            detail = f"Exotel international calling restriction: {raw_msg_str}. Verify international dialing permissions."
+                        elif any(term in lowered for term in ["trial", "verified number", "whitelisted"]):
+                            error_type = "TRIAL_RESTRICTION"
+                            detail = f"Exotel trial account restriction: {raw_msg_str}. In trial mode, calls are restricted to verified numbers."
+                        else:
+                            error_type = "POLICY_RESTRICTION"
+                            detail = f"Exotel policy restriction (HTTP 403): {raw_msg_str or 'Access Forbidden'}"
+                    elif res.status_code == 429:
+                        error_type = "RATE_LIMIT"
+                        detail = "Exotel rate limit exceeded (HTTP 429). Please wait before retrying."
+                    elif res.status_code >= 500:
+                        error_type = "PROVIDER_SERVER_ERROR"
+                        detail = f"Exotel server error (HTTP {res.status_code}): {raw_msg_str or res.text[:150]}"
+                    else:
+                        detail = f"Exotel error (HTTP {res.status_code}): {raw_msg_str or res.text[:150]}"
 
                     return TelephonyCallResult(
                         success=False,
@@ -445,7 +464,8 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                         provider="exotel",
                         status="failed",
                         error_message=detail,
-                        raw_response={"status_code": res.status_code, "body": res.text},
+                        error_type=error_type,
+                        raw_response={"status_code": res.status_code, "body": res.text, "error_type": error_type},
                     )
         except httpx.TimeoutException:
             return TelephonyCallResult(
@@ -454,6 +474,7 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                 provider="exotel",
                 status="failed",
                 error_message="Telephony provider connection timed out. Request aborted safely without retry.",
+                error_type="TIMEOUT",
             )
         except Exception as ex:
             return TelephonyCallResult(
@@ -462,6 +483,7 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                 provider="exotel",
                 status="failed",
                 error_message=f"Provider request error: {str(ex)}",
+                error_type="CONNECTION_ERROR",
             )
 
     def handle_incoming_call(self, external_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -635,13 +657,20 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                 if res.status_code == 200:
                     data = res.json()
                     acc_info = data.get("Account", {})
+                    kyc_status = str(acc_info.get("kyc_status") or acc_info.get("KYCStatus") or "").lower()
+                    kyc_ok = True
+                    msg = "Exotel credentials verified successfully via Exotel Account API."
+                    if kyc_status in ("pending", "pending_documents", "rejected", "not_submitted", "unverified", "suspended"):
+                        kyc_ok = False
+                        msg = f"Exotel account credentials are valid, but KYC status is '{kyc_status}'. Outbound calling is blocked until Exotel KYC verification is approved."
                     return {
-                        "valid": True,
+                        "valid": kyc_ok,
                         "provider": "exotel",
                         "account_sid": self.account_sid,
                         "caller_id": mask_phone_number(self.caller_id),
                         "account_status": acc_info.get("Status", "active"),
-                        "message": "Exotel credentials verified successfully via Exotel Account API.",
+                        "kyc_compliant": kyc_ok,
+                        "message": msg,
                         "configured": True,
                     }
                 elif res.status_code == 401:
@@ -654,13 +683,15 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                     }
                 elif res.status_code == 403:
                     msg = "Exotel access forbidden (HTTP 403)."
+                    is_kyc = False
                     try:
                         err_json = res.json()
                         rest_exc = err_json.get("RestException", {})
                         if rest_exc.get("Message"):
                             raw_m = rest_exc["Message"]
                             if "kyc" in raw_m.lower():
-                                msg = f"Exotel account compliance restriction: {raw_m}. KYC verification required."
+                                is_kyc = True
+                                msg = f"Exotel account compliance restriction: {raw_m}. KYC verification required on Exotel Console before outbound calls can be placed."
                             else:
                                 msg = f"Exotel account restriction: {raw_m}"
                     except Exception:
@@ -669,6 +700,8 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                         "valid": False,
                         "provider": "exotel",
                         "status_code": 403,
+                        "kyc_compliant": False if is_kyc else None,
+                        "error_type": "KYC_RESTRICTION" if is_kyc else "POLICY_RESTRICTION",
                         "message": msg,
                         "configured": True,
                     }

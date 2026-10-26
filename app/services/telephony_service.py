@@ -22,9 +22,23 @@ class TelephonyService:
         self.active_calls: Dict[int, Dict[str, Any]] = {}
         self.max_concurrent_calls = int(os.getenv("MAX_CONCURRENT_CALLS", "5"))
         self.max_call_duration_seconds = int(os.getenv("MAX_CALL_DURATION_SECONDS", "600"))
+        self.active_provider_override: Optional[str] = None
 
-    def get_adapter(self):
-        return get_telephony_adapter()
+    def set_active_provider(self, provider_name: str) -> Dict[str, Any]:
+        """Explicitly sets active provider ('mock' or 'exotel') for the session."""
+        prov = str(provider_name or "").strip().lower()
+        if prov not in ("mock", "exotel"):
+            raise ValueError(f"Unsupported provider '{provider_name}'. Must be 'mock' or 'exotel'.")
+        self.active_provider_override = prov
+        return {
+            "success": True,
+            "active_provider": self.active_provider_override,
+            "message": f"Telephony provider switched to '{self.active_provider_override}'.",
+        }
+
+    def get_adapter(self, provider_name: Optional[str] = None):
+        target = provider_name or self.active_provider_override
+        return get_telephony_adapter(target)
 
     def get_active_call_count(self) -> int:
         return len(self.active_calls)
@@ -70,6 +84,7 @@ class TelephonyService:
         destination_phone: str,
         customer_id: Optional[int] = None,
         customer_name: Optional[str] = None,
+        provider: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
@@ -86,13 +101,15 @@ class TelephonyService:
             }
 
         # 2. Check provider configuration if real mode is selected
-        adapter = self.get_adapter()
-        provider_name = getattr(adapter, "provider_name", "mock")
+        selected_provider = (provider or self.active_provider_override or os.getenv("TELEPHONY_PROVIDER", "mock")).strip().lower()
+        adapter = self.get_adapter(selected_provider)
+        provider_name = getattr(adapter, "provider_name", selected_provider)
         if provider_name == "exotel" and not getattr(adapter, "is_configured", lambda: True)():
             return {
                 "success": False,
                 "error": "Telephony provider 'exotel' is selected but required credentials (EXOTEL_ACCOUNT_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN, EXOTEL_CALLER_ID) are missing or incomplete in environment.",
                 "code": "PROVIDER_CONFIG_ERROR",
+                "provider": "exotel",
             }
 
         # 3. Check concurrency limits
@@ -208,13 +225,14 @@ class TelephonyService:
         else:
             call.status = "failed"
             call.ended_at = datetime.now(timezone.utc)
-            call.error_code = result.error_message
+            call.error_code = result.error_type or "PROVIDER_REJECTED"
             db.commit()
             return {
                 "success": False,
                 "call_id": call.id,
                 "error": result.error_message or "Telephony provider rejected call initiation request.",
-                "code": "PROVIDER_REJECTED",
+                "code": result.error_type or "PROVIDER_REJECTED",
+                "provider": provider_name,
             }
 
     async def handle_status_callback(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -438,6 +456,7 @@ class TelephonyService:
             "telephony_enabled": os.getenv("TELEPHONY_ENABLED", "false").lower() == "true",
             "active_provider": "exotel" if is_exotel else "mock",
             "is_provider_configured": configured,
+            "providers_available": ["mock", "exotel"],
             "active_call_count": self.get_active_call_count(),
             "max_concurrent_calls": self.max_concurrent_calls,
             "max_call_duration_seconds": self.max_call_duration_seconds,

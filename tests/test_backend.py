@@ -64,9 +64,10 @@ def test_complete_backend():
 
     # 7. Test Customer Search
     if customers:
-        target_cust = next((c for c in customers if c["name"] and c["name"] != "N/A"), customers[0])
+        from urllib.parse import quote
+        target_cust = next((c for c in customers if c["name"] and c["name"] != "N/A" and not c["name"].startswith("Caller +")), customers[0])
         search_term = target_cust["name"] if target_cust["name"] != "N/A" else target_cust["external_customer_id"][:4]
-        search_res = client.get(f"/api/customers?q={search_term}", headers=headers)
+        search_res = client.get(f"/api/customers?q={quote(search_term)}", headers=headers)
         assert search_res.status_code == 200
         found = search_res.json()
         assert len(found) > 0, f"Search for '{search_term}' did not return results"
