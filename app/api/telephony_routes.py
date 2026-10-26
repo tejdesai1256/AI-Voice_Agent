@@ -75,6 +75,8 @@ async def initiate_outbound_telephony_call(
             status_code = 409
         elif code == "CUSTOMER_NOT_FOUND":
             status_code = 404
+        elif code == "PROVIDER_CONFIG_ERROR":
+            status_code = 503
         elif code == "PROVIDER_REJECTED":
             status_code = 502
         raise HTTPException(status_code=status_code, detail=result.get("error"))

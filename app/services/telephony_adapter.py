@@ -49,12 +49,15 @@ VALID_STATUS_TRANSITIONS: Dict[str, Set[str]] = {
     "initiated": {"ringing", "in_progress", "failed", "busy", "no_answer", "canceled"},
     "ringing": {"in_progress", "failed", "busy", "no_answer", "canceled"},
     "in_progress": {"completed", "failed", "busy", "no_answer", "canceled", "human_transferred"},
+    "awaiting_language": {"in_progress", "human_transferred", "completed", "canceled", "failed"},
+    "active": {"in_progress", "completed", "failed", "busy", "no_answer", "canceled", "human_transferred"},
     "completed": set(),
     "failed": set(),
     "busy": set(),
     "no_answer": set(),
     "canceled": set(),
     "human_transferred": {"completed"},
+    "escalated": {"completed"},
 }
 
 
@@ -175,6 +178,7 @@ class MockTelephonyAdapter(TelephonyAdapter):
     Mock telephony adapter for local testing, development, and unit tests
     without incurring carrier costs or requiring external telecom credentials.
     """
+    provider_name: str = "mock"
 
     def __init__(self):
         self.active_calls: Dict[str, Dict[str, Any]] = {}
@@ -258,12 +262,17 @@ class MockTelephonyAdapter(TelephonyAdapter):
     def format_media_message(self, stream_sid: str, pcm_base64: str) -> Dict[str, Any]:
         return {
             "event": "media",
+            "stream_sid": stream_sid,
             "streamSid": stream_sid,
             "media": {"payload": pcm_base64},
         }
 
     def format_clear_message(self, stream_sid: str) -> Dict[str, Any]:
-        return {"event": "clear", "streamSid": stream_sid}
+        return {
+            "event": "clear",
+            "stream_sid": stream_sid,
+            "streamSid": stream_sid,
+        }
 
     def normalize_status(self, provider_status: str) -> str:
         s = str(provider_status or "").strip().lower().replace("-", "_")
@@ -300,6 +309,7 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
     Exotel provider adapter implementing the Connect Voice AI API and AgentStream protocol.
     Documentation: https://developer.exotel.com/docs/agentstream/connect-voice-ai
     """
+    provider_name: str = "exotel"
 
     def __init__(
         self,
@@ -310,13 +320,13 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
         subdomain: Optional[str] = None,
         webhook_secret: Optional[str] = None,
     ):
-        self.account_sid = (account_sid or os.getenv("EXOTEL_ACCOUNT_SID", "")).strip()
-        self.api_key = (api_key or os.getenv("EXOTEL_API_KEY", "")).strip()
-        self.api_token = (api_token or os.getenv("EXOTEL_API_TOKEN", "")).strip()
-        raw_caller = (caller_id or os.getenv("EXOTEL_CALLER_ID", "")).strip()
+        self.account_sid = (account_sid if account_sid is not None else os.getenv("EXOTEL_ACCOUNT_SID", "")).strip()
+        self.api_key = (api_key if api_key is not None else os.getenv("EXOTEL_API_KEY", "")).strip()
+        self.api_token = (api_token if api_token is not None else os.getenv("EXOTEL_API_TOKEN", "")).strip()
+        raw_caller = (caller_id if caller_id is not None else os.getenv("EXOTEL_CALLER_ID", "")).strip()
         self.caller_id = raw_caller.replace("-", "").replace(" ", "")
-        self.subdomain = (subdomain or os.getenv("EXOTEL_SUBDOMAIN", "api.exotel.com")).strip()
-        self.webhook_secret = (webhook_secret or os.getenv("EXOTEL_WEBHOOK_SECRET", "")).strip()
+        self.subdomain = (subdomain if subdomain is not None else os.getenv("EXOTEL_SUBDOMAIN", "api.exotel.com")).strip()
+        self.webhook_secret = (webhook_secret if webhook_secret is not None else os.getenv("EXOTEL_WEBHOOK_SECRET", "")).strip()
 
     @property
     def base_url(self) -> str:
@@ -363,6 +373,8 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
         connect_url = f"{self.base_url}/Calls/connect.json"
         public_base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
         callback_url = f"{public_base}/api/telephony/webhook/exotel" if public_base else ""
+        if callback_url and self.webhook_secret:
+            callback_url = f"{callback_url}?token={self.webhook_secret}"
 
         # Exotel Connect Voice AI requires StreamUrl (wss://) and StreamType (bidirectional)
         ws_stream_url = stream_url
@@ -408,14 +420,25 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                     try:
                         err_json = res.json()
                         rest_exc = err_json.get("RestException", {})
-                        if rest_exc.get("Message"):
-                            msg = rest_exc.get("Message").strip()
-                            if "KYC" in msg:
-                                detail = "Exotel trial account requires KYC verification to dial external numbers. In trial mode, only your registered admin number (+919579228277) can be dialed."
+                        raw_msg = rest_exc.get("Message") or err_json.get("message") or err_json.get("error")
+                        if raw_msg:
+                            raw_msg_str = str(raw_msg).strip()
+                            if "kyc" in raw_msg_str.lower():
+                                detail = (
+                                    f"Exotel account compliance restriction: {raw_msg_str}. "
+                                    "Provider KYC verification is mandatory before making outbound calls."
+                                )
                             else:
-                                detail = f"Exotel: {msg}"
+                                detail = f"Exotel: {raw_msg_str}"
                     except Exception:
-                        pass
+                        if "kyc" in res.text.lower():
+                            detail = (
+                                "Exotel account compliance restriction: Account is not yet KYC compliant. "
+                                "Provider KYC verification is mandatory before making outbound calls."
+                            )
+                        elif res.text:
+                            detail = f"Exotel error (HTTP {res.status_code}): {res.text[:200]}"
+
                     return TelephonyCallResult(
                         success=False,
                         call_sid=None,
@@ -552,10 +575,11 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
     def format_media_message(self, stream_sid: str, pcm_base64: str) -> Dict[str, Any]:
         """
         Exotel AgentStream format:
-        { "event": "media", "streamSid": "<stream_sid>", "media": { "payload": "<base64_pcm>" } }
+        { "event": "media", "stream_sid": "<stream_sid>", "media": { "payload": "<base64_pcm>" } }
         """
         return {
             "event": "media",
+            "stream_sid": stream_sid,
             "streamSid": stream_sid,
             "media": {"payload": pcm_base64},
         }
@@ -563,10 +587,11 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
     def format_clear_message(self, stream_sid: str) -> Dict[str, Any]:
         """
         Exotel AgentStream barge-in clear buffer format:
-        { "event": "clear", "streamSid": "<stream_sid>" }
+        { "event": "clear", "stream_sid": "<stream_sid>" }
         """
         return {
             "event": "clear",
+            "stream_sid": stream_sid,
             "streamSid": stream_sid,
         }
 
@@ -585,6 +610,7 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
             "canceled": "canceled",
             "cancelled": "canceled",
             "human_transferred": "human_transferred",
+            "escalated": "human_transferred",
         }
         return mapping.get(s, "in_progress")
 
@@ -618,14 +644,49 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                         "message": "Exotel credentials verified successfully via Exotel Account API.",
                         "configured": True,
                     }
+                elif res.status_code == 401:
+                    return {
+                        "valid": False,
+                        "provider": "exotel",
+                        "status_code": 401,
+                        "message": "Exotel authentication failed (HTTP 401): Invalid API Key or Token.",
+                        "configured": True,
+                    }
+                elif res.status_code == 403:
+                    msg = "Exotel access forbidden (HTTP 403)."
+                    try:
+                        err_json = res.json()
+                        rest_exc = err_json.get("RestException", {})
+                        if rest_exc.get("Message"):
+                            raw_m = rest_exc["Message"]
+                            if "kyc" in raw_m.lower():
+                                msg = f"Exotel account compliance restriction: {raw_m}. KYC verification required."
+                            else:
+                                msg = f"Exotel account restriction: {raw_m}"
+                    except Exception:
+                        pass
+                    return {
+                        "valid": False,
+                        "provider": "exotel",
+                        "status_code": 403,
+                        "message": msg,
+                        "configured": True,
+                    }
                 else:
                     return {
                         "valid": False,
                         "provider": "exotel",
                         "status_code": res.status_code,
-                        "message": f"Exotel authentication failed (HTTP {res.status_code}): {res.text[:200]}",
+                        "message": f"Exotel API check returned HTTP {res.status_code}: {res.text[:200]}",
                         "configured": True,
                     }
+        except httpx.TimeoutException:
+            return {
+                "valid": False,
+                "provider": "exotel",
+                "message": "Connection to Exotel timed out.",
+                "configured": True,
+            }
         except Exception as e:
             return {
                 "valid": False,
@@ -640,14 +701,11 @@ def get_telephony_adapter(provider_name: Optional[str] = None) -> TelephonyAdapt
     Factory function providing the selected TelephonyAdapter instance.
     Keeps provider selection configurable so that providers can be switched
     without rewriting AI engine or call management services.
+    Enforces clear separation: real-mode returns real adapter (does not silently fall back to mock).
     """
     selected = (provider_name or os.getenv("TELEPHONY_PROVIDER", "mock")).strip().lower()
 
     if selected == "exotel":
-        adapter = ExotelTelephonyAdapter()
-        if adapter.is_configured():
-            return adapter
-        print("[Telephony Notice] Exotel selected but credentials missing; falling back to MockTelephonyAdapter.")
-        return MockTelephonyAdapter()
+        return ExotelTelephonyAdapter()
 
     return MockTelephonyAdapter()

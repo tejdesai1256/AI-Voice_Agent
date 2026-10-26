@@ -3700,7 +3700,7 @@
 
                 if (['in_progress', 'answered'].includes(s)) {
                     statusBadge.className = 'badge badge-success';
-                } else if (['ringing', 'queued', 'awaiting_language'].includes(s)) {
+                } else if (['ringing', 'queued', 'initiated', 'awaiting_language'].includes(s)) {
                     statusBadge.className = 'badge badge-warning';
                 } else if (['completed', 'resolved'].includes(s)) {
                     statusBadge.className = 'badge badge-primary';

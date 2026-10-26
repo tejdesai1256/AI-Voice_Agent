@@ -87,6 +87,8 @@ class TelephonyStreamManager:
 
         async def handle_caller_utterance(utterance_bytes: bytes):
             nonlocal current_playback_task
+            if not is_call_active:
+                return
             if not utterance_bytes or len(utterance_bytes) < (self.sample_rate * 2 * 0.4):  # < 0.4s
                 return
 
@@ -103,8 +105,10 @@ class TelephonyStreamManager:
                     active_call = db.query(Call).filter(Call.id == call_id).first()
                     if not active_call or active_call.ended_at is not None:
                         return
+                    if active_call.status in ("human_transferred", "escalated", "completed", "failed", "canceled"):
+                        return
 
-                    # Transcribe
+                    # Transcribe with Faster-Whisper
                     transcript = self.voice_service.stt_service.transcribe(temp_in)
                     if not transcript or not transcript.strip():
                         return
@@ -124,12 +128,13 @@ class TelephonyStreamManager:
                             active_call.status = "in_progress"
                             db.commit()
 
-                    # Process voice turn via existing VoiceResponseService
+                    # Process voice turn via existing VoiceResponseService (reusing the already computed transcript)
                     turn_res = await self.voice_service.process_existing_turn(
                         call_id=call_id,
                         audio_path=temp_in,
                         output_audio_path=temp_out,
                         db=db,
+                        transcript_override=transcript,
                     )
 
                     # Stream assistant's spoken reply
@@ -145,7 +150,8 @@ class TelephonyStreamManager:
                         pass
 
         async def execute_language_escalation(db, call_record, lang_name: str, message_text: str, lang_code: str):
-            nonlocal current_playback_task
+            nonlocal is_call_active, current_playback_task
+            is_call_active = False  # Terminate AI response loop upon escalation
             call_record.language = lang_name
             call_record.status = "human_transferred"
             call_record.ended_at = datetime.now(timezone.utc)
@@ -200,8 +206,19 @@ class TelephonyStreamManager:
 
                 elif event_type == "start":
                     start_data = msg.get("start") or {}
-                    stream_sid = start_data.get("stream_sid") or start_data.get("streamSid") or f"str_{call_id}"
-                    call_sid = start_data.get("call_sid") or start_data.get("callSid")
+                    stream_sid = (
+                        msg.get("stream_sid")
+                        or msg.get("streamSid")
+                        or start_data.get("stream_sid")
+                        or start_data.get("streamSid")
+                        or f"str_{call_id}"
+                    )
+                    call_sid = (
+                        msg.get("call_sid")
+                        or msg.get("callSid")
+                        or start_data.get("call_sid")
+                        or start_data.get("callSid")
+                    )
 
                     with SessionLocal() as db:
                         c = db.query(Call).filter(Call.id == call_id).first()
@@ -219,7 +236,7 @@ class TelephonyStreamManager:
 
                 elif event_type == "media":
                     media_data = msg.get("media") or {}
-                    b64_pcm = media_data.get("payload")
+                    b64_pcm = media_data.get("payload") or msg.get("payload")
                     if not b64_pcm:
                         continue
 

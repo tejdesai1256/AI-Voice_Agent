@@ -320,7 +320,7 @@ def test_telephony_suite():
     # -------------------------------------------------------------------------
     # 15. Provider Credential Self-Check (Zero-Cost Verification)
     # -------------------------------------------------------------------------
-    print("\n[15/15] Testing Provider Credentials Self-Check Endpoint...")
+    print("\n[15/21] Testing Provider Credentials Self-Check Endpoint...")
     v_res = client.get("/api/telephony/verify-provider", headers=headers)
     assert v_res.status_code == 200
     v_data = v_res.json()
@@ -329,8 +329,148 @@ def test_telephony_suite():
     assert "message" in v_data
     print(f"  [PASS] Provider self-check verified: {v_data['provider']} (valid: {v_data['valid']})")
 
+    # -------------------------------------------------------------------------
+    # 16. Real-Mode Configuration & Missing Credentials Validation
+    # -------------------------------------------------------------------------
+    print("\n[16/21] Testing Real-Mode Configuration & Missing Credentials Validation...")
+    real_adapter = ExotelTelephonyAdapter(account_sid="", api_key="", api_token="", caller_id="")
+    assert not real_adapter.is_configured(), "Empty Exotel adapter unexpectedly marked configured"
+    
+    # Factory function must NOT silently fall back to mock when exotel is requested
+    inst = get_telephony_adapter("exotel")
+    assert isinstance(inst, ExotelTelephonyAdapter), f"Expected ExotelTelephonyAdapter, got {type(inst)}"
+    
+    # Starting outbound call with unconfigured adapter must fail gracefully
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    res_unconf = loop.run_until_complete(
+        real_adapter.start_outbound_call(to_phone="+919876543210", call_id=999, stream_url="wss://test.local/stream")
+    )
+    assert not res_unconf.success
+    assert "not configured" in res_unconf.error_message.lower()
+    print("  [PASS] Real-mode configuration & missing credentials cleanly validated without silent fallback")
+
+    # -------------------------------------------------------------------------
+    # 17. Provider KYC Compliance Restriction & Authentication Error Handling
+    # -------------------------------------------------------------------------
+    print("\n[17/21] Testing KYC Compliance Restriction & Auth Errors...")
+    from unittest.mock import patch, MagicMock
+    configured_adapter = ExotelTelephonyAdapter(
+        account_sid="test_sid",
+        api_key="test_key",
+        api_token="test_token",
+        caller_id="02012345678",
+    )
+    assert configured_adapter.is_configured()
+
+    # Mock 403 KYC restricted response
+    mock_403 = MagicMock()
+    mock_403.status_code = 403
+    mock_403.text = '{"RestException": {"Status": 403, "Message": "Your account is not yet KYC compliant. This is mandatory before making outbound calls."}}'
+    mock_403.json.return_value = {
+        "RestException": {
+            "Status": 403,
+            "Message": "Your account is not yet KYC compliant. This is mandatory before making outbound calls.",
+        }
+    }
+
+    with patch("httpx.AsyncClient.post", return_value=mock_403):
+        res_kyc = loop.run_until_complete(
+            configured_adapter.start_outbound_call("+919876543210", 888, "wss://test/stream")
+        )
+        assert not res_kyc.success
+        assert "kyc" in res_kyc.error_message.lower()
+        assert "compliance" in res_kyc.error_message.lower()
+        print(f"  [PASS] Provider KYC compliance restriction correctly identified: '{res_kyc.error_message[:65]}...'")
+
+    # Mock 401 Unauthorized response on credential verification
+    mock_401 = MagicMock()
+    mock_401.status_code = 401
+    mock_401.text = "Unauthorized"
+    with patch("httpx.AsyncClient.get", return_value=mock_401):
+        verify_401 = loop.run_until_complete(configured_adapter.verify_credentials())
+        assert not verify_401["valid"]
+        assert verify_401["status_code"] == 401
+        print("  [PASS] Provider HTTP 401 authentication rejection correctly identified")
+
+    # -------------------------------------------------------------------------
+    # 18. Provider Timeout Handling & Server Error Resilience
+    # -------------------------------------------------------------------------
+    print("\n[18/21] Testing Provider Timeout & Server Error Handling...")
+    import httpx
+    with patch("httpx.AsyncClient.post", side_effect=httpx.TimeoutException("Connection timed out")):
+        res_timeout = loop.run_until_complete(
+            configured_adapter.start_outbound_call("+919876543210", 777, "wss://test/stream")
+        )
+        assert not res_timeout.success
+        assert "timed out" in res_timeout.error_message.lower()
+        print("  [PASS] Provider timeout handled cleanly without retries or uncaught exceptions")
+
+    mock_500 = MagicMock()
+    mock_500.status_code = 500
+    mock_500.text = "Internal Server Error"
+    mock_500.json.side_effect = Exception("Not JSON")
+    with patch("httpx.AsyncClient.post", return_value=mock_500):
+        res_500 = loop.run_until_complete(
+            configured_adapter.start_outbound_call("+919876543210", 776, "wss://test/stream")
+        )
+        assert not res_500.success
+        assert "500" in res_500.error_message
+        print("  [PASS] Provider HTTP 500 server error safely captured")
+
+    # -------------------------------------------------------------------------
+    # 19. Unknown CallSid & Duplicate Webhook Resilience
+    # -------------------------------------------------------------------------
+    print("\n[19/21] Testing Unknown Provider CallSid & Duplicate Webhook Resilience...")
+    unk_res = client.post(
+        "/api/telephony/webhook/exotel",
+        data={"CallSid": "unknown_sid_99999", "Status": "completed", "CustomField": "999999"},
+    )
+    assert unk_res.status_code == 200
+    unk_data = unk_res.json()
+    assert unk_data["result"]["status"] == "ignored"
+    assert "Call not found" in unk_data["result"]["reason"]
+
+    # Duplicate completed callback to existing completed call
+    dup_cb = client.post(
+        "/api/telephony/webhook/exotel",
+        data={"CallSid": call_sid, "Status": "completed", "Duration": "45", "CustomField": str(call_id)},
+    )
+    assert dup_cb.status_code == 200
+    with SessionLocal() as db:
+        c_dup = db.query(Call).filter(Call.id == call_id).first()
+        assert c_dup.status == "completed"
+    print("  [PASS] Unknown CallSid ignored cleanly and duplicate webhook handled idempotently")
+
+    # -------------------------------------------------------------------------
+    # 20. Resource Cleanup & Terminal Call State Enforcement
+    # -------------------------------------------------------------------------
+    print("\n[20/21] Testing Resource Cleanup & Terminal Call State Enforcement...")
+    with SessionLocal() as db:
+        c_term = db.query(Call).filter(Call.id == call_id).first()
+        assert c_term.ended_at is not None
+    # Repeated hangup on ended call returns already_ended
+    repeat_hangup = loop.run_until_complete(svc.hangup_call(call_id))
+    assert repeat_hangup["success"] and repeat_hangup["status"] == "already_ended"
+    print("  [PASS] Terminal call state preserved and resources cleanly reclaimed")
+
+    # -------------------------------------------------------------------------
+    # 21. Audio Pipeline Error & Edge Case Handling
+    # -------------------------------------------------------------------------
+    print("\n[21/21] Testing Audio Pipeline Edge Cases...")
+    missing_pcm = wav_to_pcm_bytes("non_existent_audio_file.wav")
+    assert missing_pcm == b"", "Expected empty bytes for missing audio file"
+    empty_wav = pcm_to_wav_bytes(b"", sample_rate=16000)
+    assert len(empty_wav) == 44, "Expected valid 44-byte WAV header for empty PCM"
+    assert empty_wav[:4] == b"RIFF"
+    assert calculate_pcm_rms(b"") == 0.0
+    print("  [PASS] Audio utility error handling and boundary conditions verified")
+
     print("\n========================================================")
-    print("ALL 15 TELEPHONY LAYER TESTS PASSED 100% SUCCESSFULLY!")
+    print("ALL 21 TELEPHONY LAYER TESTS PASSED 100% SUCCESSFULLY!")
     print("========================================================")
 
 

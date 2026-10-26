@@ -29,8 +29,40 @@ class TelephonyService:
     def get_active_call_count(self) -> int:
         return len(self.active_calls)
 
-    def is_concurrency_limit_reached(self) -> bool:
-        return len(self.active_calls) >= self.max_concurrent_calls
+    def is_concurrency_limit_reached(self, db: Optional[Session] = None) -> bool:
+        if len(self.active_calls) >= self.max_concurrent_calls:
+            return True
+        if db:
+            from datetime import timedelta
+            # Reclaim abandoned/stale calls older than max_call_duration_seconds
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.max_call_duration_seconds)
+            stale_calls = (
+                db.query(Call)
+                .filter(
+                    Call.ended_at.is_(None),
+                    Call.started_at < cutoff,
+                    func.lower(Call.status).in_(["queued", "initiated", "ringing", "in_progress", "active", "awaiting_language"]),
+                )
+                .all()
+            )
+            if stale_calls:
+                now_ts = datetime.now(timezone.utc)
+                for sc in stale_calls:
+                    sc.ended_at = now_ts
+                    if sc.status not in ("completed", "canceled", "failed"):
+                        sc.status = "completed"
+                db.commit()
+
+            active_db_count = (
+                db.query(func.count(Call.id))
+                .filter(
+                    Call.ended_at.is_(None),
+                    func.lower(Call.status).in_(["queued", "initiated", "ringing", "in_progress", "active", "awaiting_language"]),
+                )
+                .scalar() or 0
+            )
+            return active_db_count >= self.max_concurrent_calls
+        return False
 
     async def initiate_outbound_call(
         self,
@@ -44,15 +76,7 @@ class TelephonyService:
         Validates phone number, enforces concurrency guards, creates pending call
         record, and initiates outbound call via selected telephony provider.
         """
-        # 1. Check concurrency limits
-        if self.is_concurrency_limit_reached():
-            return {
-                "success": False,
-                "error": f"Concurrency limit reached ({self.max_concurrent_calls} concurrent calls max). Please wait for active calls to conclude.",
-                "code": "CONCURRENCY_LIMIT_EXCEEDED",
-            }
-
-        # 2. Validate and normalize phone number
+        # 1. Validate and normalize phone number
         is_valid, norm_phone, err = normalize_phone_number(destination_phone)
         if not is_valid:
             return {
@@ -61,7 +85,25 @@ class TelephonyService:
                 "code": "INVALID_PHONE_NUMBER",
             }
 
-        # 2b. Check for duplicate active call to the same phone number (idempotency guard)
+        # 2. Check provider configuration if real mode is selected
+        adapter = self.get_adapter()
+        provider_name = getattr(adapter, "provider_name", "mock")
+        if provider_name == "exotel" and not getattr(adapter, "is_configured", lambda: True)():
+            return {
+                "success": False,
+                "error": "Telephony provider 'exotel' is selected but required credentials (EXOTEL_ACCOUNT_SID, EXOTEL_API_KEY, EXOTEL_API_TOKEN, EXOTEL_CALLER_ID) are missing or incomplete in environment.",
+                "code": "PROVIDER_CONFIG_ERROR",
+            }
+
+        # 3. Check concurrency limits
+        if self.is_concurrency_limit_reached(db):
+            return {
+                "success": False,
+                "error": f"Concurrency limit reached ({self.max_concurrent_calls} concurrent calls max). Please wait for active calls to conclude.",
+                "code": "CONCURRENCY_LIMIT_EXCEEDED",
+            }
+
+        # 3b. Check for duplicate active call to the same phone number (idempotency guard)
         for active in self.active_calls.values():
             if active.get("destination_phone") == norm_phone:
                 return {
@@ -86,7 +128,7 @@ class TelephonyService:
                 "code": "DUPLICATE_CALL_IN_PROGRESS",
             }
 
-        # 3. Resolve or create customer record
+        # 4. Resolve or create customer record
         if customer_id:
             customer = db.query(Customer).filter(Customer.id == customer_id).first()
             if not customer:
@@ -103,15 +145,8 @@ class TelephonyService:
                 phone=norm_phone,
             )
 
-        # 4. Create pending Call session in DB
+        # 5. Create pending Call session in DB
         now = datetime.now(timezone.utc)
-        adapter = self.get_adapter()
-        provider_name = getattr(adapter, "provider_name", type(adapter).__name__.replace("TelephonyAdapter", "").lower())
-        if "exotel" in type(adapter).__name__.lower():
-            provider_name = "exotel"
-        elif "mock" in type(adapter).__name__.lower():
-            provider_name = "mock"
-
         call = Call(
             customer_id=customer.id,
             status="queued",
@@ -125,7 +160,7 @@ class TelephonyService:
         db.commit()
         db.refresh(call)
 
-        # 5. Determine public WebSocket URL for bidirectional audio streaming
+        # 6. Determine public WebSocket URL for bidirectional audio streaming
         ws_base = os.getenv("TELEPHONY_WS_URL")
         if not ws_base:
             public_base = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
@@ -133,7 +168,7 @@ class TelephonyService:
         ws_base = ws_base.rstrip("/")
         stream_url = f"{ws_base}/api/telephony/stream/{call.id}"
 
-        # 6. Execute provider request
+        # 7. Execute provider request
         result = await adapter.start_outbound_call(
             to_phone=norm_phone,
             call_id=call.id,
@@ -156,6 +191,10 @@ class TelephonyService:
 
             # Spawn call duration limit safety task
             self._schedule_duration_guard(call.id)
+
+            # In mock mode: schedule realistic deterministic call lifecycle simulation
+            if provider_name == "mock":
+                self._schedule_mock_lifecycle(call.id)
 
             return {
                 "success": True,
@@ -199,6 +238,9 @@ class TelephonyService:
             if not call:
                 return {"status": "ignored", "reason": "Call not found"}
 
+            if not call.provider_call_id and event.provider_call_id:
+                call.provider_call_id = event.provider_call_id
+
             current_status = call.status
             new_status = event.normalized_status
 
@@ -230,21 +272,21 @@ class TelephonyService:
         Processes incoming telephone call webhook.
         Creates Call session and returns stream connection details.
         """
-        if self.is_concurrency_limit_reached():
-            return {
-                "success": False,
-                "error": "Concurrency limit reached. Unable to accept inbound call.",
-                "code": "CONCURRENCY_LIMIT_EXCEEDED",
-            }
-
-        adapter = self.get_adapter()
-        inbound_info = adapter.handle_incoming_call(payload)
-        caller_phone = inbound_info.get("customer_phone", "")
-
-        is_valid, norm_phone, _ = normalize_phone_number(caller_phone)
-        safe_phone = norm_phone if is_valid else caller_phone
-
         with SessionLocal() as db:
+            if self.is_concurrency_limit_reached(db):
+                return {
+                    "success": False,
+                    "error": "Concurrency limit reached. Unable to accept inbound call.",
+                    "code": "CONCURRENCY_LIMIT_EXCEEDED",
+                }
+
+            adapter = self.get_adapter()
+            inbound_info = adapter.handle_incoming_call(payload)
+            caller_phone = inbound_info.get("customer_phone", "")
+
+            is_valid, norm_phone, _ = normalize_phone_number(caller_phone)
+            safe_phone = norm_phone if is_valid else caller_phone
+
             ext_cust_id = f"TEL_{safe_phone.replace('+', '')}" if safe_phone else f"TEL_UNKNOWN_{int(datetime.now().timestamp())}"
             customer = self.conversation_service.get_or_create_customer(
                 db,
@@ -258,7 +300,7 @@ class TelephonyService:
                 status="ringing",
                 call_type="INBOUND",
                 language="pending",
-                provider=type(adapter).__name__.replace("TelephonyAdapter", "").lower(),
+                provider=getattr(adapter, "provider_name", "mock"),
                 provider_call_id=inbound_info.get("external_call_id"),
                 caller_phone=safe_phone,
                 started_at=datetime.now(timezone.utc),
@@ -313,6 +355,65 @@ class TelephonyService:
 
             return {"success": True, "status": "ended", "call_id": call_id}
 
+    def _schedule_mock_lifecycle(self, call_id: int):
+        """
+        Deterministic simulated call lifecycle for mock telephony.
+        Transitions call from queued -> ringing -> in_progress -> completed.
+        Respects manual hangups or external events.
+        """
+        async def _simulate():
+            # 1. Wait 1.5s -> ringing
+            await asyncio.sleep(1.5)
+            if call_id not in self.active_calls:
+                return
+            with SessionLocal() as db:
+                c = db.query(Call).filter(Call.id == call_id).first()
+                if c and c.ended_at is None and is_valid_status_transition(c.status, "ringing"):
+                    c.status = "ringing"
+                    db.commit()
+
+            # 2. Wait 2.0s -> in_progress
+            await asyncio.sleep(2.0)
+            if call_id not in self.active_calls:
+                return
+            with SessionLocal() as db:
+                c = db.query(Call).filter(Call.id == call_id).first()
+                if c and c.ended_at is None and is_valid_status_transition(c.status, "in_progress"):
+                    c.status = "in_progress"
+                    c.language = "en"
+                    db.commit()
+                    # Add simulated greeting message to conversation if empty
+                    msg_count = db.query(Message).filter(Message.call_id == call_id).count()
+                    if msg_count == 0:
+                        self.conversation_service.add_message(
+                            db, call_id=call_id, speaker="assistant",
+                            text="Hello! I am your AI voice assistant. How can I help you today?"
+                        )
+                        db.commit()
+
+            # 3. Wait 8.0s -> completed
+            await asyncio.sleep(8.0)
+            if call_id not in self.active_calls:
+                return
+            with SessionLocal() as db:
+                c = db.query(Call).filter(Call.id == call_id).first()
+                if c and c.ended_at is None and is_valid_status_transition(c.status, "completed"):
+                    now = datetime.now(timezone.utc)
+                    c.status = "completed"
+                    c.ended_at = now
+                    if c.started_at:
+                        c_start = c.started_at.replace(tzinfo=timezone.utc) if c.started_at.tzinfo is None else c.started_at
+                        c.duration_seconds = max(1, round((now - c_start).total_seconds()))
+                    db.commit()
+                    if call_id in self.active_calls:
+                        del self.active_calls[call_id]
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_simulate())
+        except RuntimeError:
+            pass
+
     def _schedule_duration_guard(self, call_id: int):
         """
         Background task automatically terminating calls exceeding MAX_CALL_DURATION_SECONDS.
@@ -331,7 +432,7 @@ class TelephonyService:
 
     def get_system_status(self) -> Dict[str, Any]:
         adapter = self.get_adapter()
-        is_exotel = "exotel" in type(adapter).__name__.lower()
+        is_exotel = getattr(adapter, "provider_name", "mock") == "exotel"
         configured = getattr(adapter, "is_configured", lambda: True)()
         return {
             "telephony_enabled": os.getenv("TELEPHONY_ENABLED", "false").lower() == "true",

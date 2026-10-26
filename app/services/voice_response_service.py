@@ -1,5 +1,6 @@
 import time
 import asyncio
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.services.stt_service import STTService
@@ -115,6 +116,7 @@ class VoiceResponseService:
         audio_path: str,
         output_audio_path: str,
         db: Session,
+        transcript_override: Optional[str] = None,
     ) -> dict:
         """
         Processes an additional voice turn for an already active call.
@@ -133,9 +135,12 @@ class VoiceResponseService:
         history_context = self.context_service.build_context(all_calls)
         context_db_time = time.perf_counter() - db_start
 
-        # 5. Transcribe with Faster-Whisper
+        # 5. Transcribe with Faster-Whisper (or use pre-computed transcript)
         stt_start = time.perf_counter()
-        transcript = self.stt_service.transcribe(audio_path)
+        if transcript_override is not None:
+            transcript = transcript_override
+        else:
+            transcript = self.stt_service.transcribe(audio_path)
         if not transcript or not transcript.strip():
             transcript = "[No clear speech detected]"
         stt_time = time.perf_counter() - stt_start
