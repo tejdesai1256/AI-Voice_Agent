@@ -45,6 +45,8 @@ def convert_to_16k_mono_wav(input_path: str, output_path: str = None) -> str:
                 for frame in in_container.decode(in_stream):
                     for resampled in resampler.resample(frame):
                         out_wav.writeframes(resampled.to_ndarray().tobytes())
+                for resampled in resampler.resample(None):
+                    out_wav.writeframes(resampled.to_ndarray().tobytes())
 
         if os.path.exists(output_path) and os.path.getsize(output_path) > 44:
             return output_path
@@ -85,6 +87,8 @@ def wav_to_pcm_bytes(wav_path: str, target_sample_rate: int = 16000) -> bytes:
             for frame in in_container.decode(in_stream):
                 for resampled in resampler.resample(frame):
                     pcm_chunks.append(resampled.to_ndarray().tobytes())
+            for resampled in resampler.resample(None):
+                pcm_chunks.append(resampled.to_ndarray().tobytes())
         return b"".join(pcm_chunks)
     except Exception as e:
         print(f"[audio_utils Warning] wav_to_pcm_bytes failed: {e}")

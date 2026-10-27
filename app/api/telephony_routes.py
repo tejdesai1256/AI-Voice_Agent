@@ -208,7 +208,8 @@ async def exotel_call_connect_instructions(
         public_base = os.getenv("PUBLIC_BASE_URL", "http://localhost:8001")
         ws_base = public_base.replace("https://", "wss://").replace("http://", "ws://")
     ws_base = ws_base.rstrip("/")
-    stream_url = f"{ws_base}/api/telephony/stream/{call_id}"
+    sample_rate = int(os.getenv("TELEPHONY_SAMPLE_RATE", "16000"))
+    stream_url = f"{ws_base}/api/telephony/stream/{call_id}?sample-rate={sample_rate}"
 
     xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>

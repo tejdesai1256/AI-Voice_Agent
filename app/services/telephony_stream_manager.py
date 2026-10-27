@@ -31,8 +31,10 @@ class TelephonyStreamManager:
     def __init__(self, voice_service: Optional[VoiceResponseService] = None):
         self.voice_service = voice_service or VoiceResponseService()
         self.sample_rate = int(os.getenv("TELEPHONY_SAMPLE_RATE", "16000"))
-        # 16-bit mono: 2 bytes per sample. 20ms chunk = 0.02 * sample_rate * 2
-        self.chunk_size_bytes = int(0.02 * self.sample_rate * 2)  # 640 bytes for 16kHz
+        # Exotel AgentStream specification:
+        # Minimum chunk size: 3.2 KB (3200 bytes)
+        # Must be exact multiple of 320 bytes
+        self.chunk_size_bytes = 3200
         self.speech_rms_threshold = 280.0
         self.silence_threshold_sec = 0.75
 
@@ -51,6 +53,10 @@ class TelephonyStreamManager:
         is_playing_assistant_audio = False
         current_playback_task: Optional[asyncio.Task] = None
 
+        # Inspect query parameters for requested sample rate (e.g. ?sample-rate=16000)
+        qp_rate = websocket.query_params.get("sample-rate") or websocket.query_params.get("sample_rate")
+        stream_sample_rate = int(qp_rate) if qp_rate and qp_rate.isdigit() else self.sample_rate
+
         # Audio buffering state
         audio_buffer = bytearray()
         last_speech_time = 0.0
@@ -62,24 +68,45 @@ class TelephonyStreamManager:
             if not os.path.exists(wav_path) or not stream_sid:
                 return
 
-            pcm_bytes = wav_to_pcm_bytes(wav_path, target_sample_rate=self.sample_rate)
+            # Resample audio cleanly to the negotiated stream sample rate (16kHz or 8kHz)
+            pcm_bytes = wav_to_pcm_bytes(wav_path, target_sample_rate=stream_sample_rate)
             if not pcm_bytes:
                 return
 
             is_playing_assistant_audio = True
+            chunk_size = self.chunk_size_bytes  # 3200 bytes (meets Exotel >= 3.2KB and % 320 == 0)
+            chunk_duration = (chunk_size / 2) / stream_sample_rate
+
             try:
-                # Chunk and stream at natural 20ms pace
-                for i in range(0, len(pcm_bytes), self.chunk_size_bytes):
+                start_time = time.monotonic()
+                total_chunks = (len(pcm_bytes) + chunk_size - 1) // chunk_size
+
+                for chunk_idx in range(total_chunks):
                     if not is_call_active or not is_playing_assistant_audio:
                         break
-                    chunk = pcm_bytes[i : i + self.chunk_size_bytes]
-                    if len(chunk) < self.chunk_size_bytes:
-                        # Zero pad trailing partial frame
-                        chunk = chunk + b"\x00" * (self.chunk_size_bytes - len(chunk))
+
+                    offset = chunk_idx * chunk_size
+                    chunk = pcm_bytes[offset : offset + chunk_size]
+
+                    # Zero pad trailing partial frame to guarantee exact 3200 bytes
+                    if len(chunk) < chunk_size:
+                        chunk = chunk + b"\x00" * (chunk_size - len(chunk))
+
                     b64_payload = base64.b64encode(chunk).decode("utf-8")
                     msg = adapter.format_media_message(stream_sid=stream_sid, pcm_base64=b64_payload)
                     await websocket.send_text(json.dumps(msg))
-                    await asyncio.sleep(0.018)  # slight sub-20ms sleep for buffer smooth playback
+
+                    # Pre-buffer: Send first 2 chunks quickly (5ms) to prime Exotel's jitter buffer
+                    if chunk_idx < 2:
+                        await asyncio.sleep(0.005)
+                        continue
+
+                    # Drift-compensated pacing: Keeps audio perfectly synchronized with real-time playback
+                    expected_elapsed = (chunk_idx - 1) * chunk_duration
+                    actual_elapsed = time.monotonic() - start_time
+                    sleep_delay = expected_elapsed - actual_elapsed
+                    if sleep_delay > 0:
+                        await asyncio.sleep(sleep_delay)
             except Exception as e:
                 print(f"[Stream Warning] Audio streaming interrupted: {e}")
             finally:
@@ -89,11 +116,12 @@ class TelephonyStreamManager:
             nonlocal current_playback_task
             if not is_call_active:
                 return
-            if not utterance_bytes or len(utterance_bytes) < (self.sample_rate * 2 * 0.4):  # < 0.4s
+            min_bytes = int(stream_sample_rate * 2 * 0.4)  # < 0.4s
+            if not utterance_bytes or len(utterance_bytes) < min_bytes:
                 return
 
             os.makedirs(RECORDINGS_DIR, exist_ok=True)
-            wav_bytes = pcm_to_wav_bytes(bytes(utterance_bytes), sample_rate=self.sample_rate)
+            wav_bytes = pcm_to_wav_bytes(bytes(utterance_bytes), sample_rate=stream_sample_rate)
             temp_in = os.path.join(RECORDINGS_DIR, f"tel_in_{call_id}_{int(time.time()*1000)}.wav")
             temp_out = os.path.join(RECORDINGS_DIR, f"tel_out_{call_id}_{int(time.time()*1000)}.wav")
 
@@ -206,6 +234,12 @@ class TelephonyStreamManager:
 
                 elif event_type == "start":
                     start_data = msg.get("start") or {}
+                    media_format = start_data.get("mediaFormat") or msg.get("mediaFormat") or {}
+                    detected_rate = media_format.get("sampleRate") or media_format.get("sample_rate")
+                    if detected_rate and str(detected_rate).isdigit():
+                        stream_sample_rate = int(detected_rate)
+                    print(f"[Telephony Stream] Active stream sample rate negotiated: {stream_sample_rate}Hz")
+
                     stream_sid = (
                         msg.get("stream_sid")
                         or msg.get("streamSid")
@@ -249,8 +283,8 @@ class TelephonyStreamManager:
                         speech_frame_count += 1
                         last_speech_time = now_ts
 
-                        # If user speaks for 2 frames while assistant audio is playing, trigger BARGE-IN!
-                        if is_playing_assistant_audio and speech_frame_count >= 2:
+                        # If user speaks for 3 consecutive frames while assistant audio is playing, trigger BARGE-IN!
+                        if is_playing_assistant_audio and speech_frame_count >= 3:
                             is_playing_assistant_audio = False
                             if current_playback_task and not current_playback_task.done():
                                 current_playback_task.cancel()
@@ -274,7 +308,7 @@ class TelephonyStreamManager:
                                 asyncio.create_task(handle_caller_utterance(to_process))
 
                     # Safety guard: prevent single utterance exceeding 25 seconds
-                    if len(audio_buffer) > (self.sample_rate * 2 * 25):
+                    if len(audio_buffer) > (stream_sample_rate * 2 * 25):
                         to_process = bytes(audio_buffer)
                         audio_buffer.clear()
                         has_spoken = False

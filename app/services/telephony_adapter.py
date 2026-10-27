@@ -384,6 +384,12 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
         elif ws_stream_url.startswith("http://"):
             ws_stream_url = ws_stream_url.replace("http://", "ws://")
 
+        # Explicitly negotiate sample rate with Exotel (defaults to 16000 Hz or TELEPHONY_SAMPLE_RATE)
+        configured_rate = int(os.getenv("TELEPHONY_SAMPLE_RATE", "16000"))
+        if "sample-rate" not in ws_stream_url and "sample_rate" not in ws_stream_url:
+            separator = "&" if "?" in ws_stream_url else "?"
+            ws_stream_url = f"{ws_stream_url}{separator}sample-rate={configured_rate}"
+
         payload = {
             "From": normalized_to,
             "CallerId": self.caller_id,

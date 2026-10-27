@@ -183,7 +183,8 @@ class TelephonyService:
             public_base = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
             ws_base = public_base.replace("https://", "wss://").replace("http://", "ws://")
         ws_base = ws_base.rstrip("/")
-        stream_url = f"{ws_base}/api/telephony/stream/{call.id}"
+        sample_rate = int(os.getenv("TELEPHONY_SAMPLE_RATE", "16000"))
+        stream_url = f"{ws_base}/api/telephony/stream/{call.id}?sample-rate={sample_rate}"
 
         # 7. Execute provider request
         result = await adapter.start_outbound_call(
@@ -328,7 +329,8 @@ class TelephonyService:
             db.refresh(call)
 
             ws_base = os.getenv("TELEPHONY_WS_URL") or os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").replace("https://", "wss://").replace("http://", "ws://")
-            stream_url = f"{ws_base.rstrip('/')}/api/telephony/stream/{call.id}"
+            sample_rate = int(os.getenv("TELEPHONY_SAMPLE_RATE", "16000"))
+            stream_url = f"{ws_base.rstrip('/')}/api/telephony/stream/{call.id}?sample-rate={sample_rate}"
 
             self.active_calls[call.id] = {
                 "call_id": call.id,
