@@ -66,8 +66,13 @@ def ensure_schema_migrations(target_engine=None):
                     conn.execute(text("ALTER TABLE calls ADD COLUMN duration_seconds INTEGER"))
                 if "error_code" not in columns:
                     conn.execute(text("ALTER TABLE calls ADD COLUMN error_code VARCHAR(100)"))
+
+        if "conversation_states" not in inspector.get_table_names():
+            from app.database.models import ConversationState
+            ConversationState.__table__.create(bind=engine_to_use, checkfirst=True)
     except Exception as e:
         print(f"[DB Notice] Schema check: {e}")
+
 
 
 def get_db():

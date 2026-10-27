@@ -358,6 +358,8 @@ def handle_dtmf_routing(db: Session, call: Call, digit_or_lang: str) -> dict:
         call.language = "en"
         call.status = "IN_PROGRESS"
 
+        greeting_text = voice_service.conversation_flow_service.get_initial_greeting_and_question(db, call)
+
         # 1. Record customer DTMF choice in messages
         conversation_service.add_message(
             db,
@@ -370,9 +372,18 @@ def handle_dtmf_routing(db: Session, call: Call, digit_or_lang: str) -> dict:
             db,
             call_id=call.id,
             speaker="assistant",
-            text=ENGLISH_GREETING_MESSAGE,
+            text=greeting_text,
         )
         db.commit()
+
+        # Generate English greeting audio
+        en_path = os.path.join(RECORDINGS_DIR, "en_greeting.wav")
+        try:
+            voice_service.tts_service.synthesize(greeting_text, en_path, language="en")
+        except Exception as e:
+            print(f"Warning generating English audio: {e}")
+
+        conv_state = voice_service.conversation_flow_service.get_or_create_state(db, call.id)
 
         return {
             "call_id": call.id,
@@ -381,7 +392,14 @@ def handle_dtmf_routing(db: Session, call: Call, digit_or_lang: str) -> dict:
             "is_escalated": False,
             "escalation_reason": None,
             "audio_url": "/audio/en_greeting.wav",
-            "response": ENGLISH_GREETING_MESSAGE,
+            "response": greeting_text,
+            "conversation_state": {
+                "current_question_id": conv_state.current_question_id,
+                "questions_asked": conv_state.questions_asked or [],
+                "answers": conv_state.answers or {},
+                "missing_info": conv_state.missing_info or [],
+                "conversation_status": conv_state.conversation_status,
+            },
         }
 
 
@@ -449,10 +467,12 @@ def create_call(
                 "escalation_reason": routing.get("escalation_reason"),
                 "audio_url": routing["audio_url"],
                 "response": routing["response"],
+                "conversation_state": routing.get("conversation_state"),
                 "started_at": call.started_at.isoformat() if call.started_at else None,
                 "ended_at": call.ended_at.isoformat() if call.ended_at else None,
             }
     except Exception as e:
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -515,6 +535,7 @@ async def get_call_details(
                 joinedload(Call.messages),
                 joinedload(Call.requirement),
                 joinedload(Call.escalations),
+                joinedload(Call.conversation_state),
             )
             .filter(Call.id == call_id)
             .first()
@@ -560,6 +581,18 @@ async def get_call_details(
             else None
         )
 
+        conv_state_data = None
+        if call.conversation_state:
+            conv_state_data = {
+                "current_question_id": call.conversation_state.current_question_id,
+                "current_stage": call.conversation_state.current_stage,
+                "questions_asked": call.conversation_state.questions_asked or [],
+                "answers": call.conversation_state.answers or {},
+                "missing_info": call.conversation_state.missing_info or [],
+                "conversation_status": call.conversation_state.conversation_status,
+                "is_processing": bool(call.conversation_state.is_processing),
+            }
+
         return {
             "call_id": call.id,
             "customer": {
@@ -589,6 +622,7 @@ async def get_call_details(
                 for msg in sorted_messages
             ],
             "requirements": requirements_data,
+            "conversation_state": conv_state_data,
         }
     except HTTPException:
         raise
@@ -614,7 +648,7 @@ async def add_turn(
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
 
-    if call.ended_at is not None or call.status == "ESCALATED":
+    if call.ended_at is not None or call.status in ("RESOLVED", "COMPLETED", "ESCALATED", "FAILED"):
         raise HTTPException(
             status_code=400,
             detail=f"Call with ID {call_id} has already ended or has been routed to human assistance.",
@@ -703,12 +737,21 @@ async def add_turn(
                 }
 
         # Normal English AI Conversation Pipeline Turn
-        result = await voice_service.process_existing_turn(
-            call_id=call_id,
-            audio_path=active_audio_path,
-            output_audio_path=output_path,
-            db=db,
-        )
+        try:
+            result = await voice_service.process_existing_turn(
+                call_id=call_id,
+                audio_path=active_audio_path,
+                output_audio_path=output_path,
+                db=db,
+            )
+        except ValueError as ve:
+            err_msg = str(ve)
+            if "already ended" in err_msg:
+                raise HTTPException(status_code=400, detail=err_msg)
+            elif "already being processed" in err_msg:
+                raise HTTPException(status_code=409, detail=err_msg)
+            else:
+                raise HTTPException(status_code=400, detail=err_msg)
 
         filename = os.path.basename(output_path)
         audio_url = request.url_for("audio_files", path=filename)
@@ -716,6 +759,7 @@ async def add_turn(
         if "audio_path" in result:
             del result["audio_path"]
         return result
+
     except HTTPException:
         raise
     except Exception as e:
@@ -762,3 +806,32 @@ async def end_call_endpoint(
         return {"status": "ended", "call_id": call_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversation-questions")
+def get_questions_endpoint(
+    current_user: SystemUser = Depends(get_current_user),
+):
+    """Retrieve the configurable customer qualification question sequence."""
+    from app.config.conversation_questions import get_configured_questions
+    return get_configured_questions()
+
+
+@router.post("/conversation-questions")
+async def update_questions_endpoint(
+    request: Request,
+    current_user: SystemUser = Depends(get_current_user),
+):
+    """Update the configurable customer qualification question sequence."""
+    from app.config.conversation_questions import set_configured_questions
+    try:
+        body = await request.json()
+        if not isinstance(body, list):
+            raise HTTPException(status_code=400, detail="Expected a list of question definitions.")
+        set_configured_questions(body, persist=True)
+        return {"status": "success", "questions": body}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid request: {e}")
+

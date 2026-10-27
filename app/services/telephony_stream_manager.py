@@ -35,7 +35,8 @@ class TelephonyStreamManager:
         # Minimum chunk size: 3.2 KB (3200 bytes)
         # Must be exact multiple of 320 bytes
         self.chunk_size_bytes = 3200
-        self.speech_rms_threshold = 280.0
+        # Telephony microphone audio typically has RMS between 100-250
+        self.speech_rms_threshold = float(os.getenv("TELEPHONY_VAD_THRESHOLD", "120.0"))
         self.silence_threshold_sec = 0.75
 
     async def handle_stream(self, websocket: WebSocket, call_id: int):
@@ -151,6 +152,23 @@ class TelephonyStreamManager:
                         elif any(k in t_lower for k in ["3", "marathi", "मराठी"]):
                             await execute_language_escalation(db, active_call, "Marathi", MARATHI_ASSISTANCE_TEXT, "mr")
                             return
+                        elif any(k in t_lower for k in ["1", "english", "one", "अंग्रेजी", "इंग्रजी"]):
+                            active_call.language = "en"
+                            active_call.status = "in_progress"
+                            db.commit()
+                            greeting_text = self.voice_service.conversation_flow_service.get_initial_greeting_and_question(db, active_call)
+                            ack_path = os.path.join(RECORDINGS_DIR, "ivr_english_ack.wav")
+                            try:
+                                self.voice_service.tts_service.synthesize(
+                                    greeting_text,
+                                    ack_path,
+                                    language="en",
+                                )
+                            except Exception as ex:
+                                print(f"[TTS Error] Ack synthesis: {ex}")
+                            current_playback_task = asyncio.create_task(send_audio_file(ack_path))
+                            return
+
                         else:
                             active_call.language = "en"
                             active_call.status = "in_progress"
@@ -329,6 +347,18 @@ class TelephonyStreamManager:
                                     c.language = "en"
                                     c.status = "in_progress"
                                     db.commit()
+                                    greeting_text = self.voice_service.conversation_flow_service.get_initial_greeting_and_question(db, c)
+                                    ack_path = os.path.join(RECORDINGS_DIR, "ivr_english_ack.wav")
+                                    try:
+                                        self.voice_service.tts_service.synthesize(
+                                            greeting_text,
+                                            ack_path,
+                                            language="en",
+                                        )
+                                    except Exception as ex:
+                                        print(f"[TTS Error] DTMF ack synthesis: {ex}")
+                                    current_playback_task = asyncio.create_task(send_audio_file(ack_path))
+
 
                 elif event_type in ("stop", "hangup"):
                     is_call_active = False

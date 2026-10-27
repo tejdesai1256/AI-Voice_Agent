@@ -58,6 +58,8 @@ class Call(Base):
     messages = relationship("Message", back_populates="call", cascade="all, delete-orphan")
     requirement = relationship("Requirement", back_populates="call", uselist=False, cascade="all, delete-orphan")
     escalations = relationship("HumanAssistanceRequest", back_populates="call", cascade="all, delete-orphan")
+    conversation_state = relationship("ConversationState", back_populates="call", uselist=False, cascade="all, delete-orphan")
+
 
 
 class Message(Base):
@@ -110,4 +112,23 @@ class HumanAssistanceRequest(Base):
     # Relationships
     call = relationship("Call", back_populates="escalations")
     customer = relationship("Customer", back_populates="escalations")
+
+
+class ConversationState(Base):
+    __tablename__ = "conversation_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    call_id = Column(Integer, ForeignKey("calls.id"), unique=True, nullable=False, index=True)
+    current_question_id = Column(String(100), nullable=True)
+    current_stage = Column(String(100), default="INIT", nullable=False)
+    questions_asked = Column(JSON, default=list, nullable=False)
+    answers = Column(JSON, default=dict, nullable=False)
+    missing_info = Column(JSON, default=list, nullable=False)
+    conversation_status = Column(String(50), default="AWAITING_RESPONSE", nullable=False)
+    is_processing = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    # Relationships
+    call = relationship("Call", back_populates="conversation_state")
 

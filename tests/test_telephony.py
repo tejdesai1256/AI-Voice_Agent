@@ -29,7 +29,14 @@ client = TestClient(app)
 def test_telephony_suite():
     # Force Mock adapter for unit testing to avoid telecom charges and external network dependencies
     os.environ["TELEPHONY_PROVIDER"] = "mock"
+    with SessionLocal() as db:
+        db.query(Call).filter(Call.ended_at.is_(None)).update(
+            {"ended_at": datetime.now(timezone.utc), "status": "completed"},
+            synchronize_session=False,
+        )
+        db.commit()
     print("\n========================================================")
+
     print("STARTING TELEPHONY LAYER COMPREHENSIVE TEST SUITE")
     print("========================================================")
 

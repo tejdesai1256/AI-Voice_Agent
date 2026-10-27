@@ -1535,7 +1535,19 @@
                                 <button class="btn btn-danger btn-sm" onclick="endLiveCallFromSection()">End Session</button>
                             </div>
 
+                            <!-- Interactive Question Flow Progress Banner -->
+                            <div id="live-question-flow-banner" class="hidden" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; padding: 0.75rem 1.25rem; background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-control); font-size: 0.8125rem;">
+                                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                    <span style="font-weight: 700; color: var(--color-primary);">📋 Qualification Flow:</span>
+                                    <span id="live-question-current-label" style="color: var(--color-text); font-weight: 600;">Question 1: May I know your name?</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span id="live-question-progress-badge" class="badge badge-primary">Question 1 / 7</span>
+                                </div>
+                            </div>
+
                             <!-- Interactive Language Selection (IVR) Banner -->
+
                             <div id="live-language-ivr-banner" style="background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 0.85rem 1.25rem; margin-bottom: 1.25rem;">
                                 <div style="font-size: 0.8125rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.6rem; display: flex; align-items: center; justify-content: space-between;">
                                     <span>🌐 Language Prompt Active: Press 1 for English • Press 2 for Hindi • Press 3 for Marathi</span>
@@ -2880,6 +2892,27 @@
                     box.appendChild(bubble);
                 });
 
+                // Update Conversation Question Flow banner if state present
+                const flowBanner = document.getElementById('live-question-flow-banner');
+                const flowLabel = document.getElementById('live-question-current-label');
+                const flowBadge = document.getElementById('live-question-progress-badge');
+                if (data.conversation_state && flowBanner) {
+                    flowBanner.classList.remove('hidden');
+                    const cState = data.conversation_state;
+                    const answersCount = Object.keys(cState.answers || {}).length;
+                    const totalQ = answersCount + (cState.missing_info ? cState.missing_info.length : 0);
+                    if (cState.conversation_status === 'COMPLETED' || !cState.current_question_id) {
+                        flowLabel.textContent = '✓ Qualification Completed! All required questions answered.';
+                        flowBadge.textContent = 'Completed (7/7)';
+                        flowBadge.className = 'badge badge-success';
+                    } else {
+                        const stageClean = String(cState.current_question_id).replace('q', 'Question ').replace('_', ': ');
+                        flowLabel.textContent = `Stage: ${stageClean}`;
+                        flowBadge.textContent = `Progress: ${answersCount} / ${totalQ || 7} answered`;
+                        flowBadge.className = 'badge badge-primary';
+                    }
+                }
+
                 // Auto-scroll to bottom
                 box.scrollTop = box.scrollHeight;
             } catch (err) {
@@ -2905,8 +2938,22 @@
             player.onended = () => {
                 visualizer.classList.remove('waveform-animating');
                 ring.className = 'mic-ring';
+
+                // Automatically ready microphone for the customer to speak their response naturally
+                if (activeLiveCallId && !isRecordingLive && !isProcessingTurn) {
+                    const pill = document.getElementById('live-call-status-pill');
+                    const isTerminal = pill && (pill.textContent === 'COMPLETED' || pill.textContent === 'ESCALATED' || pill.textContent === 'RESOLVED');
+                    if (!isTerminal) {
+                        setTimeout(() => {
+                            if (activeLiveCallId && !isRecordingLive && !isProcessingTurn) {
+                                startLiveRecording().catch(e => console.warn('Auto-listen notice:', e));
+                            }
+                        }, 500);
+                    }
+                }
             };
         }
+
 
         function stopAllAudioPlayback() {
             const aiAudio = document.getElementById('live-ai-audio-player');
@@ -2932,7 +2979,24 @@
             }
         }
 
+        let liveAudioContext = null;
+        let liveSilenceTimer = null;
+        let liveSpeechDetected = false;
+        let liveAudioAnimFrame = null;
+
         function releaseMicStream() {
+            if (liveSilenceTimer) {
+                clearTimeout(liveSilenceTimer);
+                liveSilenceTimer = null;
+            }
+            if (liveAudioAnimFrame) {
+                cancelAnimationFrame(liveAudioAnimFrame);
+                liveAudioAnimFrame = null;
+            }
+            if (liveAudioContext && liveAudioContext.state !== 'closed') {
+                try { liveAudioContext.close(); } catch (e) {}
+                liveAudioContext = null;
+            }
             if (liveAudioStream) {
                 liveAudioStream.getTracks().forEach(t => t.stop());
                 liveAudioStream = null;
@@ -2986,6 +3050,51 @@
                     await submitLiveRecordedAudio();
                 };
 
+                // Silence detection for natural turn completion
+                liveSpeechDetected = false;
+                clearTimeout(liveSilenceTimer);
+                liveSilenceTimer = null;
+
+                try {
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContextClass) {
+                        liveAudioContext = new AudioContextClass();
+                        const source = liveAudioContext.createMediaStreamSource(liveAudioStream);
+                        const analyser = liveAudioContext.createAnalyser();
+                        analyser.fftSize = 512;
+                        source.connect(analyser);
+
+                        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                        const monitorVoiceActivity = () => {
+                            if (!isRecordingLive) return;
+                            analyser.getByteFrequencyData(dataArray);
+                            let sum = 0;
+                            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                            const avg = sum / dataArray.length;
+
+                            if (avg > 14) {
+                                liveSpeechDetected = true;
+                                if (liveSilenceTimer) {
+                                    clearTimeout(liveSilenceTimer);
+                                    liveSilenceTimer = null;
+                                }
+                            } else if (liveSpeechDetected && !liveSilenceTimer) {
+                                // 1.8s of silence after speech ends turn automatically
+                                liveSilenceTimer = setTimeout(() => {
+                                    if (isRecordingLive) {
+                                        stopLiveRecording();
+                                    }
+                                }, 1800);
+                            }
+                            liveAudioAnimFrame = requestAnimationFrame(monitorVoiceActivity);
+                        };
+                        monitorVoiceActivity();
+                    }
+                } catch (e) {
+                    console.warn('AudioContext VAD notice:', e);
+                }
+
                 currentMediaRecorder.start(250);
                 isRecordingLive = true;
                 setMicButtonState('recording');
@@ -2997,6 +3106,7 @@
                 resetLiveRecordingUI();
             }
         }
+
 
         function stopLiveRecording() {
             if (currentMediaRecorder && currentMediaRecorder.state !== 'inactive') {
