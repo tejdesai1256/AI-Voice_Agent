@@ -175,7 +175,8 @@ class VoiceResponseService:
             if transcript_override is not None:
                 transcript = transcript_override
             else:
-                transcript = self.stt_service.transcribe(audio_path)
+                call_lang = call.language if getattr(call, "language", None) not in ("pending", None) else None
+                transcript = self.stt_service.transcribe(audio_path, language=call_lang)
             if not transcript or not transcript.strip():
                 transcript = "[No clear speech detected]"
             stt_time = time.perf_counter() - stt_start

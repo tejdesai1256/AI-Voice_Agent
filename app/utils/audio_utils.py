@@ -42,11 +42,16 @@ def convert_to_16k_mono_wav(input_path: str, output_path: str = None) -> str:
                 out_wav.setframerate(16000)   # 16kHz standard for Whisper
 
                 resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+                raw_frames = []
                 for frame in in_container.decode(in_stream):
                     for resampled in resampler.resample(frame):
-                        out_wav.writeframes(resampled.to_ndarray().tobytes())
+                        raw_frames.append(resampled.to_ndarray().tobytes())
                 for resampled in resampler.resample(None):
-                    out_wav.writeframes(resampled.to_ndarray().tobytes())
+                    raw_frames.append(resampled.to_ndarray().tobytes())
+
+                raw_bytes = b"".join(raw_frames)
+                cleaned_bytes = preprocess_pcm_for_stt(raw_bytes)
+                out_wav.writeframes(cleaned_bytes)
 
         if os.path.exists(output_path) and os.path.getsize(output_path) > 44:
             return output_path
@@ -109,4 +114,37 @@ def calculate_pcm_rms(pcm_data: bytes) -> float:
     shorts = struct.unpack(f"<{count}h", pcm_data[:count * 2])
     sum_squares = sum(s * s for s in shorts)
     return math.sqrt(sum_squares / count)
+
+
+def preprocess_pcm_for_stt(
+    pcm_data: bytes,
+    target_peak: float = 26000.0,
+    max_gain: float = 6.0,
+) -> bytes:
+    """
+    Cleans and normalizes raw 16-bit Linear PCM audio for optimal STT (Whisper):
+    1. Removes DC offset (centers waveform around zero).
+    2. Dynamically normalizes peak amplitude up to max_gain (default 6.0x / ~15dB)
+       so soft voices and telephony line attenuation are elevated to nominal STT input level.
+    3. Prevents clipping by clamping to [-32768, 32767].
+    """
+    if not pcm_data or len(pcm_data) < 4:
+        return pcm_data
+
+    try:
+        import numpy as np
+        arr = np.frombuffer(pcm_data, dtype=np.int16).astype(np.float32)
+        # 1. Remove DC offset
+        arr -= np.mean(arr)
+        # 2. Dynamic peak normalization
+        peak = np.max(np.abs(arr))
+        if peak > 150:
+            gain = min(target_peak / peak, max_gain)
+            if gain > 1.05 or gain < 0.95:
+                arr *= gain
+        arr = np.clip(arr, -32768, 32767).astype(np.int16)
+        return arr.tobytes()
+    except Exception as e:
+        print(f"[audio_utils Warning] preprocess_pcm_for_stt failed: {e}")
+        return pcm_data
 

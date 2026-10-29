@@ -13,7 +13,8 @@ from app.database.models import Call, Message
 from app.services.voice_response_service import VoiceResponseService
 from app.services.escalation_service import EscalationService
 from app.services.telephony_adapter import get_telephony_adapter
-from app.utils.audio_utils import pcm_to_wav_bytes, wav_to_pcm_bytes, calculate_pcm_rms
+from collections import deque
+from app.utils.audio_utils import pcm_to_wav_bytes, wav_to_pcm_bytes, calculate_pcm_rms, preprocess_pcm_for_stt
 
 RECORDINGS_DIR = "recordings"
 
@@ -35,9 +36,11 @@ class TelephonyStreamManager:
         # Minimum chunk size: 3.2 KB (3200 bytes)
         # Must be exact multiple of 320 bytes
         self.chunk_size_bytes = 3200
-        # Telephony microphone audio typically has RMS between 100-250
-        self.speech_rms_threshold = float(os.getenv("TELEPHONY_VAD_THRESHOLD", "120.0"))
-        self.silence_threshold_sec = 0.75
+        # Telephony microphone audio typically has RMS between 40-150.
+        # Sensitive default (65.0) ensures soft, distant voices are clearly captured.
+        self.speech_rms_threshold = float(os.getenv("TELEPHONY_VAD_THRESHOLD", "65.0"))
+        # Natural conversational silence duration (1.3s) prevents mid-sentence voice cutoffs
+        self.silence_threshold_sec = float(os.getenv("TELEPHONY_SILENCE_THRESHOLD_SEC", "1.3"))
 
     async def handle_stream(self, websocket: WebSocket, call_id: int):
         await websocket.accept()
@@ -62,7 +65,15 @@ class TelephonyStreamManager:
         audio_buffer = bytearray()
         last_speech_time = 0.0
         has_spoken = False
-        speech_frame_count = 0
+        consecutive_voiced_frames = 0
+        total_voiced_frames = 0
+
+        # Pre-roll ring buffer: stores last ~500ms of audio (5 frames of 100ms)
+        # Ensures initial syllables and quiet onsets are never clipped!
+        preroll_buffer = deque(maxlen=5)
+
+        # Dynamic ambient noise floor tracking for adaptive VAD
+        ambient_rms = 25.0
 
         async def send_audio_file(wav_path: str):
             nonlocal is_playing_assistant_audio
@@ -113,16 +124,21 @@ class TelephonyStreamManager:
             finally:
                 is_playing_assistant_audio = False
 
-        async def handle_caller_utterance(utterance_bytes: bytes):
+        async def handle_caller_utterance(utterance_bytes: bytes, voiced_frames_count: int = 0):
             nonlocal current_playback_task
             if not is_call_active:
                 return
-            min_bytes = int(stream_sample_rate * 2 * 0.4)  # < 0.4s
+            min_bytes = int(stream_sample_rate * 2 * 0.35)  # < 0.35s
             if not utterance_bytes or len(utterance_bytes) < min_bytes:
+                return
+            # Require at least 2 voiced frames to reject isolated clicks/line static
+            if voiced_frames_count < 2:
                 return
 
             os.makedirs(RECORDINGS_DIR, exist_ok=True)
-            wav_bytes = pcm_to_wav_bytes(bytes(utterance_bytes), sample_rate=stream_sample_rate)
+            # Center DC offset and normalize gain for maximum Whisper acoustic clarity
+            cleaned_pcm = preprocess_pcm_for_stt(bytes(utterance_bytes))
+            wav_bytes = pcm_to_wav_bytes(cleaned_pcm, sample_rate=stream_sample_rate)
             temp_in = os.path.join(RECORDINGS_DIR, f"tel_in_{call_id}_{int(time.time()*1000)}.wav")
             temp_out = os.path.join(RECORDINGS_DIR, f"tel_out_{call_id}_{int(time.time()*1000)}.wav")
 
@@ -137,8 +153,10 @@ class TelephonyStreamManager:
                     if active_call.status in ("human_transferred", "escalated", "completed", "failed", "canceled"):
                         return
 
-                    # Transcribe with Faster-Whisper
-                    transcript = self.voice_service.stt_service.transcribe(temp_in)
+                    # Transcribe with Faster-Whisper using active call language context
+                    call_lang = active_call.language if active_call.language not in ("pending", None) else None
+                    transcript = self.voice_service.stt_service.transcribe(temp_in, language=call_lang)
+                    print(f"[Telephony STT] Call {call_id} recognized: '{transcript}' (Frames: {voiced_frames_count}, Size: {len(utterance_bytes)}B)")
                     if not transcript or not transcript.strip():
                         return
 
@@ -296,41 +314,66 @@ class TelephonyStreamManager:
                     rms = calculate_pcm_rms(chunk)
                     now_ts = time.time()
 
-                    # Voice Activity Detection (VAD) & Barge-in
-                    if rms >= self.speech_rms_threshold:
-                        speech_frame_count += 1
+                    # Dynamic ambient noise tracking during non-speech periods
+                    if not has_spoken and not is_playing_assistant_audio:
+                        ambient_rms = 0.92 * ambient_rms + 0.08 * rms
+
+                    # Effective speech threshold dynamically adapts to caller line noise
+                    effective_threshold = max(self.speech_rms_threshold, ambient_rms * 1.8 + 15.0)
+
+                    # Higher threshold for barge-in to reject acoustic echo from phone speaker
+                    barge_threshold = max(130.0, effective_threshold * 1.6)
+
+                    is_voiced = rms >= effective_threshold
+
+                    if is_voiced:
+                        consecutive_voiced_frames += 1
+                        total_voiced_frames += 1
                         last_speech_time = now_ts
 
-                        # If user speaks for 3 consecutive frames while assistant audio is playing, trigger BARGE-IN!
-                        if is_playing_assistant_audio and speech_frame_count >= 3:
+                        # Barge-in: only trigger if assistant audio is playing and user speaks with sustained energy (>= 4 frames = 400ms)
+                        if is_playing_assistant_audio and rms >= barge_threshold and consecutive_voiced_frames >= 4:
                             is_playing_assistant_audio = False
                             if current_playback_task and not current_playback_task.done():
                                 current_playback_task.cancel()
-                            # Send clear event to provider
                             if stream_sid:
                                 clear_msg = adapter.format_clear_message(stream_sid)
                                 await websocket.send_text(json.dumps(clear_msg))
 
-                        has_spoken = True
+                        # Speech onset: PREPEND PREROLL BUFFER so initial word/syllable is NEVER clipped!
+                        if not has_spoken:
+                            has_spoken = True
+                            for pre_chunk in preroll_buffer:
+                                audio_buffer.extend(pre_chunk)
+
                         audio_buffer.extend(chunk)
                     else:
-                        speech_frame_count = 0
-                        if has_spoken:
+                        consecutive_voiced_frames = 0
+                        if not has_spoken:
+                            # Keep pre-roll buffer rolling with latest ambient frames
+                            preroll_buffer.append(chunk)
+                        else:
+                            # In speech hangover: keep recording trailing syllables
                             audio_buffer.extend(chunk)
-                            # Check silence threshold
+                            # Check silence threshold for natural conversational turn completion
                             if (now_ts - last_speech_time) >= self.silence_threshold_sec:
-                                # Utterance completed
                                 to_process = bytes(audio_buffer)
+                                v_count = total_voiced_frames
                                 audio_buffer.clear()
+                                preroll_buffer.clear()
                                 has_spoken = False
-                                asyncio.create_task(handle_caller_utterance(to_process))
+                                total_voiced_frames = 0
+                                asyncio.create_task(handle_caller_utterance(to_process, voiced_frames_count=v_count))
 
                     # Safety guard: prevent single utterance exceeding 25 seconds
                     if len(audio_buffer) > (stream_sample_rate * 2 * 25):
                         to_process = bytes(audio_buffer)
+                        v_count = total_voiced_frames
                         audio_buffer.clear()
+                        preroll_buffer.clear()
                         has_spoken = False
-                        asyncio.create_task(handle_caller_utterance(to_process))
+                        total_voiced_frames = 0
+                        asyncio.create_task(handle_caller_utterance(to_process, voiced_frames_count=v_count))
 
                 elif event_type == "dtmf":
                     dtmf_data = msg.get("dtmf") or {}
