@@ -153,7 +153,9 @@ class VoiceResponseService:
 
         # 1. Check if call has ended
         call = self.conversation_service.get_call(db, call_id)
-        if call.ended_at is not None or call.status in ("RESOLVED", "COMPLETED", "ESCALATED", "FAILED"):
+        call_status_upper = (call.status or "").upper()
+        terminal_statuses = {"RESOLVED", "COMPLETED", "ESCALATED", "FAILED", "CANCELED", "CANCELLED", "BUSY", "NO_ANSWER", "HUMAN_TRANSFERRED"}
+        if call.ended_at is not None or call_status_upper in terminal_statuses:
             raise ValueError(f"Call with id {call_id} has already ended.")
 
         # 2. Concurrency lock check
@@ -263,7 +265,16 @@ class VoiceResponseService:
 
             # 9. Synthesize TTS response immediately
             tts_start = time.perf_counter()
-            generated_audio_path = self.tts_service.synthesize(response_text, output_audio_path)
+            try:
+                safe_text = (response_text or "").strip() or "Thank you. How can I help you today?"
+                generated_audio_path = self.tts_service.synthesize(safe_text, output_audio_path)
+            except Exception as tts_err:
+                print(f"[TTS Warning] Audio synthesis failed: {tts_err}. Creating emergency fallback audio.")
+                from app.utils.audio_utils import pcm_to_wav_bytes
+                os.makedirs(os.path.dirname(output_audio_path) or ".", exist_ok=True)
+                with open(output_audio_path, "wb") as f:
+                    f.write(pcm_to_wav_bytes(b"\x00\x00" * 8000, sample_rate=16000))
+                generated_audio_path = output_audio_path
             tts_time = time.perf_counter() - tts_start
 
             total_time = time.perf_counter() - total_start
@@ -318,14 +329,23 @@ class VoiceResponseService:
                 },
             }
         finally:
-            # Guarantee lock release
+            # Guarantee lock release even if an exception invalidated transaction
             try:
-                conv_state.is_processing = 0
-                if conv_state.conversation_status == "PROCESSING":
-                    conv_state.conversation_status = "AWAITING_RESPONSE"
-                db.commit()
+                db.rollback()
             except Exception:
                 pass
+            try:
+                state = db.query(ConversationState).filter(ConversationState.call_id == call_id).first()
+                if state:
+                    state.is_processing = 0
+                    if state.conversation_status == "PROCESSING":
+                        state.conversation_status = "AWAITING_RESPONSE"
+                    db.commit()
+            except Exception:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
     async def process_voice_turn(
         self,

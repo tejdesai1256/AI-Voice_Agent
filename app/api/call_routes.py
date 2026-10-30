@@ -648,7 +648,9 @@ async def add_turn(
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
 
-    if call.ended_at is not None or call.status in ("RESOLVED", "COMPLETED", "ESCALATED", "FAILED"):
+    call_status_upper = (call.status or "").upper()
+    terminal_statuses = {"RESOLVED", "COMPLETED", "ESCALATED", "FAILED", "CANCELED", "CANCELLED", "BUSY", "NO_ANSWER", "HUMAN_TRANSFERRED"}
+    if call.ended_at is not None or call_status_upper in terminal_statuses:
         raise HTTPException(
             status_code=400,
             detail=f"Call with ID {call_id} has already ended or has been routed to human assistance.",
@@ -784,7 +786,9 @@ async def end_call_endpoint(
         call = conversation_service.get_call(db, call_id)
     except ValueError as ve:
         raise HTTPException(status_code=404, detail=str(ve))
-    if call.ended_at is not None:
+    call_status_upper = (call.status or "").upper()
+    terminal_statuses = {"RESOLVED", "COMPLETED", "ESCALATED", "FAILED", "CANCELED", "CANCELLED", "BUSY", "NO_ANSWER", "HUMAN_TRANSFERRED"}
+    if call.ended_at is not None or call_status_upper in terminal_statuses:
         return {"status": "already_ended", "call_id": call_id}
 
     try:

@@ -347,12 +347,7 @@ def test_telephony_suite():
     inst = get_telephony_adapter("exotel")
     assert isinstance(inst, ExotelTelephonyAdapter), f"Expected ExotelTelephonyAdapter, got {type(inst)}"
     
-    # Starting outbound call with unconfigured adapter must fail gracefully
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    loop = asyncio.new_event_loop()
     res_unconf = loop.run_until_complete(
         real_adapter.start_outbound_call(to_phone="+919876543210", call_id=999, stream_url="wss://test.local/stream")
     )

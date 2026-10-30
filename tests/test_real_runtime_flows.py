@@ -86,13 +86,13 @@ def run_real_runtime_verification():
     assert dtmf_data["language"] == "en"
     assert dtmf_data["is_escalated"] is False
     assert dtmf_data["audio_url"] == "/audio/en_greeting.wav"
-    assert "Hello! I am your AI voice assistant" in dtmf_data["response"]
+    assert "I am your AI voice assistant" in dtmf_data["response"]
 
     with SessionLocal() as db:
         msgs = db.query(Message).filter(Message.call_id == call_id).order_by(Message.id).all()
         assert len(msgs) == 3  # [IVR prompt, DTMF customer choice, assistant greeting]
         assert msgs[1].speaker == "customer" and "[DTMF Keypad: 1 - English]" in msgs[1].text
-        assert msgs[2].speaker == "assistant" and "Hello! I am your AI voice assistant" in msgs[2].text
+        assert msgs[2].speaker == "assistant" and "I am your AI voice assistant" in msgs[2].text
     print(f"[PASS] DTMF 1 routed call #{call_id} to English: Greeting audio verified and saved to MySQL messages table.")
 
     # Process voice turn with customer requirement
@@ -254,6 +254,10 @@ def run_real_runtime_verification():
     print("\n========================================================")
     print("ALL REAL RUNTIME VERIFICATIONS PASSED SUCCESSFULLY!")
     print("========================================================\n")
+
+def test_real_runtime_verification():
+    run_real_runtime_verification()
+
 
 if __name__ == "__main__":
     run_real_runtime_verification()

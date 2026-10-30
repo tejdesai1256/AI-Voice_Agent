@@ -31,4 +31,6 @@ async def main():
     await test_tokens(55)
     await test_tokens(80)
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
+

@@ -14,6 +14,41 @@ class ConversationFlowService:
     def __init__(self):
         pass
 
+    @staticmethod
+    def is_plausible_name(name_str: Optional[str]) -> bool:
+        """
+        Validates whether a given string is a plausible person's name,
+        protecting database and conversation context against storing entire requirement sentences.
+        """
+        if not name_str or not isinstance(name_str, str):
+            return False
+        clean = name_str.strip()
+        if not clean or len(clean) < 2 or len(clean) > 40:
+            return False
+        if clean.lower() in ("customer", "unknown", "n/a", "none", "caller", "user", "admin", "null"):
+            return False
+        # Reject sentence punctuation, newlines, digits, currency symbols
+        if any(ch in clean for ch in [",", ";", ":", "!", "?", "\n", "\r", "\t", "$", "%", "@", "#", "/", "\\", "(", ")", "[", "]", "{", "}"]):
+            return False
+        if any(ch.isdigit() for ch in clean):
+            return False
+        words = clean.split()
+        if not (1 <= len(words) <= 4):
+            return False
+
+        stop_words = {
+            "hello", "hi", "hey", "good", "morning", "afternoon", "evening",
+            "need", "want", "require", "looking", "interested", "help", "please",
+            "budget", "cost", "price", "pricing", "quote", "rate", "rupees", "dollars", "inr", "usd",
+            "website", "app", "application", "software", "development", "laptops", "computers", "services",
+            "company", "business", "work", "calling", "call", "agent", "human", "assistant",
+            "yes", "no", "okay", "sure", "thanks", "thank", "months", "weeks", "days", "years",
+        }
+        lowered_words = [w.lower().strip(".'\"") for w in words]
+        if any(w in stop_words for w in lowered_words):
+            return False
+        return True
+
     def get_or_create_state(self, db: Session, call_id: int) -> ConversationState:
         """
         Retrieves existing ConversationState for a call or initializes a new one.
@@ -30,10 +65,10 @@ class ConversationFlowService:
         questions = get_configured_questions()
         initial_answers = {}
 
-        # If customer already has a name recorded in database, note it
+        # If customer already has a name recorded in database, note it only if plausible
         if call.customer and call.customer.name:
             c_name = call.customer.name.strip()
-            if c_name and c_name.lower() not in ("customer", "unknown", "n/a", "none"):
+            if self.is_plausible_name(c_name):
                 initial_answers["name"] = c_name
 
         # Calculate missing info
@@ -70,10 +105,10 @@ class ConversationFlowService:
         customer_name = state.answers.get("name")
         if not customer_name and call.customer and call.customer.name:
             c_name = call.customer.name.strip()
-            if c_name.lower() not in ("customer", "unknown", "n/a", "none"):
+            if self.is_plausible_name(c_name):
                 customer_name = c_name
 
-        if customer_name:
+        if customer_name and self.is_plausible_name(customer_name):
             return f"Hello {customer_name}! I am your AI voice assistant. {question_text}"
         return f"Hello! I am your AI voice assistant. {question_text}"
 
@@ -227,12 +262,16 @@ class ConversationFlowService:
                 re.IGNORECASE,
             )
             if match:
-                return match.group(1).strip()
+                candidate = match.group(1).strip()
+                if self.is_plausible_name(candidate):
+                    return candidate
             # If short string (1-3 words) without stop phrases, take as name
             words = raw.split()
             if 1 <= len(words) <= 3 and not any(w in text_lower for w in ["yes", "no", "hello", "hi", "okay"]):
-                return raw.strip(".!,")
-            return raw
+                candidate = raw.strip(".!,")
+                if self.is_plausible_name(candidate):
+                    return candidate
+            return None
 
         elif key == "company":
             match = re.search(
@@ -305,7 +344,7 @@ class ConversationFlowService:
             )
             if name_match:
                 val = name_match.group(1).strip()
-                if val.lower() not in ("interested", "looking", "working", "calling"):
+                if self.is_plausible_name(val):
                     additional["name"] = val
 
         return additional
@@ -324,8 +363,10 @@ class ConversationFlowService:
         next_q_text = next_question["question"]
 
         if previous_key == "name":
-            name_to_use = customer_name or customer_answer
-            return f"Nice to meet you, {name_to_use}. {next_q_text}"
+            name_to_use = customer_name if self.is_plausible_name(customer_name) else (customer_answer if self.is_plausible_name(customer_answer) else None)
+            if name_to_use:
+                return f"Nice to meet you, {name_to_use}. {next_q_text}"
+            return f"Thank you. {next_q_text}"
         elif previous_key == "company":
             return f"Thanks! {next_q_text}"
         elif previous_key == "industry":
@@ -610,6 +651,24 @@ class ConversationFlowService:
         current_key = current_q.get("key", "info") if current_q else "info"
         extracted_val = self.extract_answer(transcript, current_q) if current_q else transcript
 
+        # If current question was name, but no plausible name could be extracted from speech
+        if current_key == "name" and not extracted_val:
+            response_text = "Thank you for sharing that. I have noted your requirements. Before we proceed, may I know your name please?"
+            return {
+                "response": response_text,
+                "action": "ask_name_clarification",
+                "advanced": False,
+                "is_escalated": False,
+                "call_status": "IN_PROGRESS",
+                "conversation_state": {
+                    "current_question_id": state.current_question_id,
+                    "questions_asked": state.questions_asked or [],
+                    "answers": state.answers or {},
+                    "missing_info": state.missing_info or [],
+                    "conversation_status": "AWAITING_RESPONSE",
+                },
+            }
+
         updated_answers = dict(state.answers or {})
         updated_answers[current_key] = extracted_val
 
@@ -619,11 +678,11 @@ class ConversationFlowService:
             if k not in updated_answers:
                 updated_answers[k] = v
 
-        # If name was provided and customer object lacks a valid name, update it
+        # If name was provided and customer object lacks a valid name, update it only if plausible
         if "name" in updated_answers and call.customer:
             name_val = updated_answers["name"]
-            if name_val and name_val.lower() not in ("customer", "unknown", "n/a", "none"):
-                if not call.customer.name or call.customer.name.lower() in ("customer", "unknown", "n/a"):
+            if name_val and self.is_plausible_name(name_val):
+                if not call.customer.name or not self.is_plausible_name(call.customer.name):
                     call.customer.name = name_val
 
         # Recalculate missing questions
