@@ -7,28 +7,27 @@ import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-BASE_URL = os.environ.get("TEST_BASE_URL", "http://127.0.0.1:8001")
-
-
-def create_silence_wav(duration_sec=1.0, sample_rate=16000) -> bytes:
-    """Creates a valid 16kHz mono 16-bit PCM WAV silence."""
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        num_frames = int(duration_sec * sample_rate)
-        wf.writeframes(b"\x00\x00" * num_frames)
-    return buf.getvalue()
+def get_test_client():
+    base_url = os.environ.get("TEST_BASE_URL", "http://127.0.0.1:8001")
+    try:
+        live = httpx.get(f"{base_url}/health", timeout=1.0)
+        if live.status_code == 200:
+            return httpx.Client(base_url=base_url, timeout=120.0), base_url
+    except Exception:
+        pass
+    from fastapi.testclient import TestClient
+    from main import app
+    return TestClient(app), "In-Process TestClient"
 
 
 def test_microphone_conversation_pipeline():
+    client, target_name = get_test_client()
     print("=================================================================")
     print("TESTING AI VOICE AGENT MULTI-TURN MICROPHONE CONVERSATION PIPELINE")
-    print(f"Target Server: {BASE_URL}")
+    print(f"Target Server: {target_name}")
     print("=================================================================")
 
-    with httpx.Client(base_url=BASE_URL, timeout=120.0) as client:
+    with client:
         # 1. Health check
         h_res = client.get("/health")
         assert h_res.status_code == 200, f"Health check failed: {h_res.text}"
