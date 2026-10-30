@@ -1631,6 +1631,61 @@
                             </div>
                             <div id="live-call-timing-badge" class="badge badge-gray hidden" style="margin-bottom: 1rem; font-size: 0.75rem; width: 100%; justify-content: center;"></div>
 
+                            <!-- AI Conversation Intelligence: Requirements, Missing Info, Current Response & Summary -->
+                            <div id="live-intelligence-panel" style="margin-bottom: 1.25rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; text-align: left;">
+                                <!-- Current AI Response & Status Card -->
+                                <div style="background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: 1rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <div style="font-size: 0.8125rem; font-weight: 700; color: var(--color-primary); display: flex; align-items: center; gap: 0.4rem;">
+                                            <span>🤖</span> Current AI Assistant Response:
+                                        </div>
+                                        <span id="live-ai-turn-state-badge" class="badge badge-success">Ready</span>
+                                    </div>
+                                    <div id="live-ai-current-response-text" style="font-size: 0.825rem; color: var(--color-text); min-height: 44px; line-height: 1.45; background: #ffffff; padding: 0.65rem 0.75rem; border-radius: var(--radius-control); border: 1px solid var(--color-border); margin-bottom: 0.75rem;">
+                                        Ready for customer speech.
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.75rem; font-weight: 700; color: var(--color-text-secondary); margin-bottom: 0.35rem; display: flex; justify-content: space-between;">
+                                            <span>Missing / Pending Information:</span>
+                                            <span id="live-missing-count-badge" class="badge badge-warning" style="font-size: 0.7rem;">0 pending</span>
+                                        </div>
+                                        <div id="live-missing-info-container" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                                            <span style="font-size: 0.75rem; color: var(--color-text-muted);">None pending</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Collected Structured Requirements Card -->
+                                <div style="background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: 1rem;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <div style="font-size: 0.8125rem; font-weight: 700; color: var(--color-success); display: flex; align-items: center; gap: 0.4rem;">
+                                            <span>📋</span> Collected Requirements:
+                                        </div>
+                                        <span id="live-req-status-badge" class="badge badge-gray">In Progress</span>
+                                    </div>
+                                    <div id="live-collected-req-grid" style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.785rem; max-height: 140px; overflow-y: auto;">
+                                        <div style="color: var(--color-text-muted); text-align: center; padding: 0.75rem;">No requirements captured yet.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Automatic Conversation Summary Card -->
+                            <div id="live-summary-card" class="hidden" style="margin-bottom: 1.25rem; background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%); border: 1.5px solid #86EFAC; border-radius: var(--radius-card); padding: 1.15rem; text-align: left;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="font-weight: 700; font-size: 0.875rem; color: #166534; display: flex; align-items: center; gap: 0.4rem;">
+                                        <span>✨</span> Automatic Conversation Summary
+                                    </div>
+                                    <span class="badge badge-success" id="live-summary-status-pill">Conversation Resolved</span>
+                                </div>
+                                <p id="live-summary-text" style="font-size: 0.825rem; line-height: 1.5; color: #14532D; margin-bottom: 0.65rem;">
+                                    Summary will appear when the conversation ends.
+                                </p>
+                                <div id="live-summary-meta" style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.75rem; color: #166534; border-top: 1px solid #BBF7D0; padding-top: 0.4rem;">
+                                    <div><strong>Agreed Next Action:</strong> <span id="live-summary-action">N/A</span></div>
+                                    <div><strong>Follow-up Required:</strong> <span id="live-summary-followup">Yes</span></div>
+                                </div>
+                            </div>
+
                             <!-- Waiting Audio Banner -->
                             <div id="live-waiting-audio-banner" class="hidden" style="background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); color: var(--color-warning); border-radius: var(--radius-control); padding: 0.75rem 1rem; font-size: 0.8125rem; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
                                 <span class="pulse-dot" style="background-color: var(--color-warning);"></span>
@@ -2911,6 +2966,87 @@
                         flowBadge.textContent = `Progress: ${answersCount} / ${totalQ || 7} answered`;
                         flowBadge.className = 'badge badge-primary';
                     }
+                }
+
+                // Update Current AI Response & Status
+                const lastAssistantMsg = [...transcript].reverse().find(m => m.speaker === 'assistant');
+                const aiRespEl = document.getElementById('live-ai-current-response-text');
+                const aiStateEl = document.getElementById('live-ai-turn-state-badge');
+                if (aiRespEl && lastAssistantMsg) {
+                    aiRespEl.textContent = lastAssistantMsg.text;
+                }
+                if (aiStateEl) {
+                    const cStat = (data.call?.status || '').toUpperCase();
+                    if (['RESOLVED', 'COMPLETED'].includes(cStat)) {
+                        aiStateEl.textContent = 'Session Resolved';
+                        aiStateEl.className = 'badge badge-success';
+                    } else if (cStat === 'ESCALATED') {
+                        aiStateEl.textContent = 'Escalated to Human';
+                        aiStateEl.className = 'badge badge-danger';
+                    } else if (typeof isProcessingTurn !== 'undefined' && isProcessingTurn) {
+                        aiStateEl.textContent = 'Thinking...';
+                        aiStateEl.className = 'badge badge-warning';
+                    } else {
+                        aiStateEl.textContent = 'Active & Ready';
+                        aiStateEl.className = 'badge badge-primary';
+                    }
+                }
+
+                // Update Missing Information Pills
+                const missingContainer = document.getElementById('live-missing-info-container');
+                const missingCountBadge = document.getElementById('live-missing-count-badge');
+                if (missingContainer && data.conversation_state) {
+                    const missingList = data.conversation_state.missing_info || [];
+                    if (missingCountBadge) {
+                        missingCountBadge.textContent = `${missingList.length} pending`;
+                        missingCountBadge.className = missingList.length > 0 ? 'badge badge-warning' : 'badge badge-success';
+                    }
+                    if (missingList.length === 0) {
+                        missingContainer.innerHTML = '<span style="font-size: 0.75rem; color: var(--color-success); font-weight: 600;">✓ All key details collected</span>';
+                    } else {
+                        missingContainer.innerHTML = missingList.map(item => `
+                            <span class="badge badge-gray" style="font-size: 0.72rem; padding: 0.2rem 0.45rem;">${escapeHtml(item)}</span>
+                        `).join('');
+                    }
+                }
+
+                // Update Collected Requirements Grid
+                const reqGrid = document.getElementById('live-collected-req-grid');
+                const reqStatusBadge = document.getElementById('live-req-status-badge');
+                if (reqGrid && (data.requirements || data.conversation_state)) {
+                    const reqObj = (data.requirements && data.requirements.structured) ? data.requirements.structured : (data.conversation_state?.answers || {});
+                    const entries = Object.entries(reqObj).filter(([k, v]) => v && k !== 'conversation_summary' && k !== 'raw_response' && k !== 'important_details');
+                    if (reqStatusBadge && data.requirements) {
+                        reqStatusBadge.textContent = data.requirements.status || 'COLLECTED';
+                        reqStatusBadge.className = data.requirements.status === 'COLLECTED' ? 'badge badge-success' : 'badge badge-primary';
+                    }
+                    if (entries.length === 0) {
+                        reqGrid.innerHTML = '<div style="color: var(--color-text-muted); text-align: center; padding: 0.75rem;">No requirements captured yet.</div>';
+                    } else {
+                        reqGrid.innerHTML = entries.map(([key, val]) => {
+                            const cleanKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            const displayVal = Array.isArray(val) ? val.join(', ') : String(val);
+                            return `
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; border-bottom: 1px solid var(--color-border-subtle); padding-bottom: 0.25rem;">
+                                    <span style="font-weight: 600; color: var(--color-text-secondary);">${escapeHtml(cleanKey)}:</span>
+                                    <span style="color: var(--color-text); text-align: right; max-width: 65%; font-weight: 500;">${escapeHtml(displayVal)}</span>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                }
+
+                // Update Automatic Conversation Summary Card
+                const summaryCard = document.getElementById('live-summary-card');
+                const summaryText = document.getElementById('live-summary-text');
+                const summaryAction = document.getElementById('live-summary-action');
+                const summaryFollowup = document.getElementById('live-summary-followup');
+                const sumData = data.summary || (data.requirements && data.requirements.structured && data.requirements.structured.conversation_summary);
+                if (summaryCard && sumData) {
+                    summaryCard.classList.remove('hidden');
+                    if (summaryText) summaryText.textContent = sumData.concise_summary || sumData.main_requirement || 'Call completed.';
+                    if (summaryAction) summaryAction.textContent = sumData.agreed_next_steps || 'Technical team to follow up';
+                    if (summaryFollowup) summaryFollowup.textContent = sumData.follow_up_required ? 'Yes' : 'No';
                 }
 
                 // Auto-scroll to bottom

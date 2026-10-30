@@ -125,9 +125,21 @@ class VoiceResponseService:
                         if v and not merged.get(k):
                             merged[k] = v
 
-                req_record.structured_requirements = merged
-                req_record.status = "COLLECTED" if is_resolved else "IN_PROGRESS"
-                req_record.updated_at = now
+            if is_resolved:
+                existing = req_record.structured_requirements or {}
+                if not existing.get("conversation_summary"):
+                    try:
+                        summary = await self.requirement_service.generate_summary(
+                            call_id=call_id,
+                            transcript=full_text,
+                            structured_req=existing,
+                            unanswered_questions=extra_answers.get("missing_info") if isinstance(extra_answers, dict) else None,
+                        )
+                        existing["conversation_summary"] = summary
+                        req_record.structured_requirements = dict(existing)
+                    except Exception as s_err:
+                        print(f"Warning: Summary generation failed for call {call_id}: {s_err}")
+
             db.commit()
         except Exception as e:
             print(f"Warning: Failed to update requirements for call {call_id}: {e}")

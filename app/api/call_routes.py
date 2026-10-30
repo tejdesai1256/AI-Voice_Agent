@@ -593,6 +593,10 @@ async def get_call_details(
                 "is_processing": bool(call.conversation_state.is_processing),
             }
 
+        summary_data = None
+        if call.requirement and call.requirement.structured_requirements:
+            summary_data = call.requirement.structured_requirements.get("conversation_summary")
+
         return {
             "call_id": call.id,
             "customer": {
@@ -622,12 +626,54 @@ async def get_call_details(
                 for msg in sorted_messages
             ],
             "requirements": requirements_data,
+            "summary": summary_data,
             "conversation_state": conv_state_data,
         }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/calls/{call_id}/summary")
+async def get_or_generate_call_summary(
+    call_id: int,
+    current_user: SystemUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the conversation summary for a call, generating it on-demand if not already generated.
+    Avoids duplicate generation for already summarized calls.
+    """
+    call = db.query(Call).filter(Call.id == call_id).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Call session not found")
+
+    if call.requirement and call.requirement.structured_requirements:
+        existing_sum = call.requirement.structured_requirements.get("conversation_summary")
+        if existing_sum:
+            return existing_sum
+
+    # Generate summary on demand
+    msgs = db.query(Message).filter(Message.call_id == call_id).order_by(Message.id).all()
+    cust_text = "\n".join(m.text for m in msgs if m.speaker == "customer")
+    req_struct = (call.requirement.structured_requirements if call.requirement else {}) or {}
+    unanswered = (call.conversation_state.missing_info if call.conversation_state else []) or []
+
+    summary = await requirement_service.generate_summary(
+        call_id=call_id,
+        transcript=cust_text,
+        structured_req=req_struct,
+        unanswered_questions=unanswered,
+    )
+
+    if call.requirement:
+        updated = dict(call.requirement.structured_requirements or {})
+        updated["conversation_summary"] = summary
+        call.requirement.structured_requirements = updated
+        db.commit()
+
+    return summary
 
 
 @router.post("/calls/{call_id}/turn")
