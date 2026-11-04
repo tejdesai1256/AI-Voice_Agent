@@ -47,6 +47,14 @@ def test_dynamic_followup_ecommerce_flow():
     headers = get_auth_headers()
     ext_id = f"PHASE2_ECOM_{int(time.time() * 1000)}"
 
+    # Pre-register customer with known name
+    cust_res = client.post(
+        "/api/customers",
+        data={"external_customer_id": ext_id, "name": "John Miller", "phone": "+919876543210"},
+        headers=headers,
+    )
+    assert cust_res.status_code == 200
+
     call_res = client.post(
         "/api/calls",
         data={"external_customer_id": ext_id, "language": "en"},
@@ -101,6 +109,14 @@ def test_duplicate_question_prevention():
     headers = get_auth_headers()
     ext_id = f"PHASE2_MULTI_{int(time.time() * 1000)}"
 
+    # Pre-register customer with known name
+    cust_res = client.post(
+        "/api/customers",
+        data={"external_customer_id": ext_id, "name": "Alice Smith", "phone": "+919876543211"},
+        headers=headers,
+    )
+    assert cust_res.status_code == 200
+
     call_res = client.post(
         "/api/calls",
         data={"external_customer_id": ext_id, "language": "en"},
@@ -147,6 +163,14 @@ def test_customer_correction_handling():
     """
     headers = get_auth_headers()
     ext_id = f"PHASE2_CORR_{int(time.time() * 1000)}"
+
+    # Pre-register customer with known name
+    cust_res = client.post(
+        "/api/customers",
+        data={"external_customer_id": ext_id, "name": "Bob Davis", "phone": "+919876543212"},
+        headers=headers,
+    )
+    assert cust_res.status_code == 200
 
     call_res = client.post(
         "/api/calls",

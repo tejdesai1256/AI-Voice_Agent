@@ -111,7 +111,7 @@ async def initiate_outbound_telephony_call(
     return result
 
 
-@router.post("/webhook/exotel")
+@router.api_route("/webhook/exotel", methods=["GET", "POST"])
 async def exotel_status_webhook(
     request: Request,
 ):
@@ -129,7 +129,7 @@ async def exotel_status_webhook(
     if not is_valid:
         raise HTTPException(status_code=403, detail="Invalid webhook signature or token.")
 
-    # Parse payload (form data or JSON)
+    # Parse payload (form data, JSON, or query params for GET)
     payload = {}
     content_type = request.headers.get("content-type", "")
     if "application/json" in content_type:
@@ -143,6 +143,9 @@ async def exotel_status_webhook(
             payload = dict(form)
         except Exception:
             payload = {}
+
+    if not payload and query_dict:
+        payload = query_dict
 
     result = await telephony_service.handle_status_callback(payload)
     return {"status": "ok", "result": result}
@@ -283,9 +286,199 @@ def get_telephony_call_history(
             "ended_at": c.ended_at.isoformat() if c.ended_at else None,
             "duration_seconds": c.duration_seconds,
             "error_code": c.error_code,
+            "recording_url": c.recording_url,
+            "customer_name": c.customer.name if c.customer else None,
         }
         for c in calls
     ]
+
+
+# ---------------------------------------------------------------------------
+# Callback & Retry Scheduling Endpoints (Authenticated)
+# ---------------------------------------------------------------------------
+
+class CreateCallbackRequest(BaseModel):
+    phone_number: str
+    customer_id: Optional[int] = None
+    customer_name: Optional[str] = None
+    scheduled_time: Optional[str] = None
+    reason: Optional[str] = "user_scheduled"
+    notes: Optional[str] = None
+
+
+@router.post("/callbacks")
+def schedule_telephony_callback(
+    body: CreateCallbackRequest,
+    current_user: SystemUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Schedules an outbound telephone callback for a customer with legal calling-hour guards.
+    """
+    from datetime import datetime, timezone
+    from app.services.callback_service import CallbackService
+
+    sched_dt = None
+    if body.scheduled_time:
+        try:
+            sched_dt = datetime.fromisoformat(body.scheduled_time.replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+    res = CallbackService.schedule_callback(
+        db=db,
+        phone_number=body.phone_number,
+        customer_id=body.customer_id,
+        customer_name=body.customer_name,
+        scheduled_time=sched_dt,
+        reason=body.reason or "user_scheduled",
+        notes=body.notes,
+    )
+    if not res.get("success"):
+        status_code = 409 if res.get("is_duplicate") else 400
+        raise HTTPException(status_code=status_code, detail=res.get("error"))
+    return res
+
+
+@router.get("/callbacks")
+def list_telephony_callbacks(
+    status: Optional[str] = None,
+    current_user: SystemUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieves scheduled callbacks and retry queues with status tracking.
+    """
+    from app.services.callback_service import CallbackService
+    return CallbackService.get_callbacks(db, status_filter=status)
+
+
+@router.post("/callbacks/{callback_id}/cancel")
+def cancel_telephony_callback(
+    callback_id: int,
+    current_user: SystemUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancels a scheduled callback.
+    """
+    from app.services.callback_service import CallbackService
+    try:
+        return CallbackService.cancel_callback(db, callback_id)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+
+
+@router.post("/callbacks/{callback_id}/call-now")
+async def execute_telephony_callback_now(
+    callback_id: int,
+    current_user: SystemUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually triggers an immediate outbound call for a scheduled callback item.
+    """
+    from app.database.models import CallbackRequest
+    cb = db.query(CallbackRequest).filter(CallbackRequest.id == callback_id).first()
+    if not cb:
+        raise HTTPException(status_code=404, detail=f"Callback #{callback_id} not found.")
+
+    res = await telephony_service.initiate_outbound_call(
+        db=db,
+        destination_phone=cb.phone_number,
+        customer_id=cb.customer_id,
+        customer_name=cb.customer_name,
+    )
+    if res.get("success"):
+        cb.status = "completed"
+        cb.call_id = res.get("call_id")
+        cb.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    return res
+
+
+# ---------------------------------------------------------------------------
+# ExOMl Gather-and-Respond Fallback Endpoints (Sequential Request & Response)
+# ---------------------------------------------------------------------------
+
+@router.api_route("/exoml/gather/{call_id}", methods=["GET", "POST"])
+async def exoml_gather_endpoint(
+    call_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Returns ExOMl XML with <Gather input="speech"> for telecom carriers
+    where sequential turn-based gather-and-respond is preferred over WebSockets.
+    """
+    call = db.query(Call).filter(Call.id == call_id).first()
+    public_base = os.getenv("PUBLIC_BASE_URL", "http://localhost:8001").rstrip("/")
+    action_url = f"{public_base}/api/telephony/exoml/turn/{call_id}"
+
+    greeting_text = "Hello! I am calling regarding your business requirements. Is this a good time to talk?"
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Gather input="speech" timeout="5" action="{action_url}" method="POST">
+        <Say voice="en-US">{greeting_text}</Say>
+    </Gather>
+</Response>"""
+    return Response(content=xml_content, media_type="application/xml")
+
+
+@router.post("/exoml/turn/{call_id}")
+async def exoml_turn_webhook(
+    call_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Receives gathered speech text or recording from Exotel <Gather>,
+    processes the conversation turn via VoiceResponseService, and returns the next ExOMl XML.
+    """
+    form = {}
+    try:
+        form = dict(await request.form())
+    except Exception:
+        pass
+
+    transcript = form.get("SpeechResult") or form.get("RecordingUrl") or ""
+    public_base = os.getenv("PUBLIC_BASE_URL", "http://localhost:8001").rstrip("/")
+    action_url = f"{public_base}/api/telephony/exoml/turn/{call_id}"
+
+    if not transcript:
+        retry_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Gather input="speech" timeout="5" action="{action_url}" method="POST">
+        <Say voice="en-US">I could not hear you clearly. Could you please repeat that?</Say>
+    </Gather>
+</Response>"""
+        return Response(content=retry_xml, media_type="application/xml")
+
+    # Process turn through AI conversation flow
+    call = db.query(Call).filter(Call.id == call_id).first()
+    if not call:
+        return Response(content='<Response><Hangup /></Response>', media_type="application/xml")
+
+    flow_res = await voice_service.conversation_flow_service.process_turn(
+        call=call, transcript=transcript, db=db
+    )
+    reply_text = flow_res.get("response", "Thank you.")
+
+    if flow_res.get("call_status") in ("RESOLVED", "COMPLETED"):
+        closing_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="en-US">{reply_text}</Say>
+    <Hangup />
+</Response>"""
+        return Response(content=closing_xml, media_type="application/xml")
+
+    next_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Gather input="speech" timeout="5" action="{action_url}" method="POST">
+        <Say voice="en-US">{reply_text}</Say>
+    </Gather>
+</Response>"""
+    return Response(content=next_xml, media_type="application/xml")
 
 
 @router.websocket("/stream/{call_id}")

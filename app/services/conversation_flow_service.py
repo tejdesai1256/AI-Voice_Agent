@@ -94,13 +94,12 @@ class ConversationFlowService:
         """
         Returns the initial greeting combined with the first unanswered question.
         Ensures the phrase 'Hello! I am your AI voice assistant' is included for backward compatibility.
+        For outbound telephone calls, starts the business qualification dialogue:
+        'Hello! I am calling regarding your business requirements. Is this a good time to talk?'
         """
         state = self.get_or_create_state(db, call.id)
         questions = get_configured_questions()
         q_map = {q["id"]: q for q in questions}
-
-        curr_q = q_map.get(state.current_question_id) if state.current_question_id else (questions[0] if questions else None)
-        question_text = curr_q["question"] if curr_q else "How may I help you today?"
 
         customer_name = state.answers.get("name")
         if not customer_name and call.customer and call.customer.name:
@@ -108,11 +107,81 @@ class ConversationFlowService:
             if self.is_plausible_name(c_name):
                 customer_name = c_name
 
+        is_telephony_outbound = (
+            getattr(call, "provider", "web") in ("mock", "exotel")
+            or (getattr(call, "destination_phone", None) is not None)
+        ) and getattr(call, "call_type", "").upper() == "OUTBOUND"
+
+        if is_telephony_outbound:
+            state.current_question_id = "q_good_time"
+            state.questions_asked = ["q_good_time"]
+            db.commit()
+            if customer_name and self.is_plausible_name(customer_name):
+                return f"Hello {customer_name}! I am calling regarding your business requirements. Is this a good time to talk?"
+            return "Hello! I am calling regarding your business requirements. Is this a good time to talk?"
+
+        curr_q = q_map.get(state.current_question_id) if state.current_question_id else (questions[0] if questions else None)
+        question_text = curr_q["question"] if curr_q else "How may I help you today?"
+
         if customer_name and self.is_plausible_name(customer_name):
             return f"Hello {customer_name}! I am your AI voice assistant. {question_text}"
         return f"Hello! I am your AI voice assistant. {question_text}"
 
     def get_question_by_id(self, q_id: str) -> Optional[Dict[str, Any]]:
+        if q_id == "q_good_time":
+            return {
+                "id": "q_good_time",
+                "key": "good_time_to_talk",
+                "question": "Is this a good time to talk?",
+                "field": "good_time_to_talk",
+                "required": True,
+                "clarification": "Is this a good time to discuss your business requirements?",
+            }
+        elif q_id == "q_service_type":
+            return {
+                "id": "q_service_type",
+                "key": "project_type",
+                "question": "What type of service are you looking for?",
+                "field": "service_type",
+                "required": True,
+                "clarification": "Could you please tell me what type of service or solution you are looking for?",
+            }
+        elif q_id == "q_products":
+            return {
+                "id": "q_products",
+                "key": "products",
+                "question": "What products do you want to sell?",
+                "field": "products_or_services",
+                "required": True,
+                "clarification": "What kind of products or items will you be selling?",
+            }
+        elif q_id == "q_payments":
+            return {
+                "id": "q_payments",
+                "key": "online_payments",
+                "question": "Do you need online payments?",
+                "field": "online_payments",
+                "required": True,
+                "clarification": "Will you need online payment gateways like cards or UPI on the website?",
+            }
+        elif q_id == "q_budget":
+            return {
+                "id": "q_budget",
+                "key": "budget",
+                "question": "What is your approximate budget?",
+                "field": "budget",
+                "required": True,
+                "clarification": "Could you share your approximate budget for this project?",
+            }
+        elif q_id == "q_timeline":
+            return {
+                "id": "q_timeline",
+                "key": "expected_timeline",
+                "question": "When are you planning to launch?",
+                "field": "timeline",
+                "required": True,
+                "clarification": "What is your targeted timeline or launch date for this?",
+            }
         questions = get_configured_questions()
         for q in questions:
             if q["id"] == q_id:
@@ -149,6 +218,24 @@ class ConversationFlowService:
         should_esc, _ = EscalationService.should_escalate(transcript)
         if should_esc:
             return "HUMAN_ESCALATION"
+
+        # 2b. Callback Request / Customer Busy
+        callback_phrases = [
+            "busy right now",
+            "call me later",
+            "call back later",
+            "call me tomorrow",
+            "not a good time",
+            "can't talk right now",
+            "cannot talk right now",
+            "driving right now",
+            "in a meeting",
+            "call later",
+            "reschedule",
+            "call back",
+        ]
+        if any(p in text for p in callback_phrases):
+            return "CALLBACK_REQUEST"
 
         # 3. Customer Not Interested
         not_interested_phrases = [
@@ -270,24 +357,24 @@ class ConversationFlowService:
         text_lower = text.lower()
 
         # 1. Budget correction (e.g. "Actually, my budget is $60,000, not $45,000" or "Change the budget to 60000")
-        m_b = re.search(r'(?:actually|instead|change|make that|update)\s+(?:the\s+)?budget(?:\s+to|\s+is)?\s*([\$₹]?\d[\d,]*(?:\s*(?:dollars?|rupees?|inr|usd|k))?)', text_lower)
+        m_b = re.search(r'(?:actually|instead|change|make that|update)[,\s]+(?:the\s+|my\s+)?budget(?:\s+to|\s+is)?\s*([\$₹]?\d[\d,]*(?:\s*(?:dollars?|rupees?|inr|usd|k))?)', text_lower)
         if not m_b:
             m_b = re.search(r'(?:not\s+[\$₹]?\d+[\w\s,]*but|instead\s+of\s+[\$₹]?\d+[\w\s,]*make\s+it)\s*([\$₹]?\d[\d,]*(?:\s*(?:dollars?|rupees?|inr|usd|k))?)', text_lower)
         if m_b:
-            val = m_b.group(1).strip()
+            val = m_b.group(1).strip().strip(".,;:?!")
             return ("budget", val, f"Got it, I've updated your budget to {val}.")
 
         # 2. Name correction (e.g. "Actually, my name is John, not Rahul" or "Change my name to John")
-        m_n = re.search(r'(?:actually|instead|change my name to|call me)\s+(?:my name is\s+)?([A-Za-z]+(?:\s+[A-Za-z]+)?)', text, re.IGNORECASE)
+        m_n = re.search(r'(?:actually|instead|change my name to|call me)[,\s]+(?:my name is\s+)?([A-Za-z]+(?:\s+[A-Za-z]+)?)', text, re.IGNORECASE)
         if m_n:
-            val = m_n.group(1).strip()
+            val = m_n.group(1).strip().strip(".,;:?!")
             if self.is_plausible_name(val):
                 return ("name", val, f"Understood, I have updated your name to {val}.")
 
         # 3. Quantity / Scope correction (e.g. "Make that 100 laptops instead of 50")
         m_q = re.search(r'(?:make that|change to|instead of\s+\d+[\w\s,]*make it|actually)\s+(\d+[\d,]*\s*(?:laptops?|desktops?|units?|items?|pcs?|licenses?))', text_lower)
         if m_q:
-            val = m_q.group(1).strip()
+            val = m_q.group(1).strip().strip(".,;:?!")
             return ("quantity", val, f"Got it, I've updated the quantity to {val}.")
 
         # 4. Project / Product correction (e.g. "Actually it's a mobile app, not a website")
@@ -297,7 +384,7 @@ class ConversationFlowService:
         # 5. Timeline correction (e.g. "Actually next week instead of next month")
         m_t = re.search(r'(?:actually|instead)\s+((?:next\s+(?:week|month|year))|(?:within\s+[^,.]+)|tomorrow|asap)', text_lower)
         if m_t:
-            val = m_t.group(1).strip()
+            val = m_t.group(1).strip().strip(".,;:?!")
             return ("expected_timeline", val, f"Understood, updated your timeline to {val}.")
 
         return None
@@ -310,7 +397,19 @@ class ConversationFlowService:
         key = question.get("key", "")
         text_lower = raw.lower()
 
-        if key == "name":
+        if key == "good_time_to_talk":
+            if any(w in text_lower for w in ["yes", "yeah", "sure", "go ahead", "tell me", "okay", "fine", "yep", "speaking", "i have time"]):
+                return "Yes"
+            elif any(w in text_lower for w in ["no", "busy", "later", "not now"]):
+                return "No, busy"
+            return "Yes"
+
+        elif key in ("project_type", "service_type", "website_type"):
+            if "e-commerce" in text_lower or "ecommerce" in text_lower:
+                return "An e-commerce website"
+            return raw.strip(".!,")
+
+        elif key == "name":
             match = re.search(
                 r"(?:my name is|i am|i'm|this is|call me|name's)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)",
                 raw,
@@ -468,6 +567,7 @@ class ConversationFlowService:
         self,
         answers: Dict[str, Any],
         current_q_id: Optional[str] = None,
+        call: Optional[Call] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Intelligently determines the next relevant question based on:
@@ -475,15 +575,26 @@ class ConversationFlowService:
         - Avoiding already-answered questions
         - Avoiding rigid sequences when customer answers make questions unnecessary
         """
+        # If caller answered good_time_to_talk and has not yet specified service
+        if "good_time_to_talk" in answers and "project_type" not in answers:
+            return {
+                "id": "q_service_type",
+                "key": "project_type",
+                "question": "What type of service are you looking for?",
+                "required": True,
+            }
+
         all_text = " ".join(str(v).lower() for v in answers.values())
 
         # Domain 1: E-Commerce
         if "e-commerce" in all_text or "ecommerce" in all_text or "online store" in all_text:
             if "products" not in answers and "products_or_services" not in answers:
+                is_tel = bool(call and getattr(call, "provider", "web") in ("mock", "exotel"))
+                q_text = "What products do you want to sell?" if is_tel else "What products will you sell?"
                 return {
                     "id": "q_products",
                     "key": "products",
-                    "question": "What products will you sell?",
+                    "question": q_text,
                     "required": True,
                 }
             if "online_payments" not in answers and "payments" not in answers:
@@ -616,7 +727,15 @@ class ConversationFlowService:
         """
         next_q_text = next_question["question"]
 
-        if previous_key == "name":
+        if previous_key == "good_time_to_talk":
+            return next_q_text
+        elif previous_key in ("project_type", "service_type") and next_question.get("key") == "products":
+            return next_q_text
+        elif previous_key in ("products", "products_or_services") and next_question.get("key") in ("online_payments", "payments"):
+            return next_q_text
+        elif previous_key in ("online_payments", "payments") and next_question.get("key") == "budget":
+            return next_q_text
+        elif previous_key == "name":
             name_to_use = customer_name if self.is_plausible_name(customer_name) else (customer_answer if self.is_plausible_name(customer_answer) else None)
             if name_to_use:
                 return f"Nice to meet you, {name_to_use}. {next_q_text}"
@@ -745,6 +864,46 @@ class ConversationFlowService:
             }
 
         # -------------------------------------------------------------
+        # Intent 2b: Callback Request / Customer Busy
+        # -------------------------------------------------------------
+        if intent == "CALLBACK_REQUEST":
+            phone = getattr(call, "destination_phone", None) or getattr(call, "caller_phone", None) or (call.customer.phone if call.customer else None)
+            cb_msg = "I completely understand. I will schedule a callback for you so our team can follow up at a better time. Have a great day!"
+            if phone:
+                try:
+                    from app.services.callback_service import CallbackService
+                    CallbackService.schedule_callback(
+                        db=db,
+                        phone_number=phone,
+                        customer_id=call.customer_id,
+                        customer_name=call.customer.name if call.customer else None,
+                        reason="customer_busy",
+                        call_id=call.id,
+                        notes="Customer requested callback during voice turn.",
+                    )
+                except Exception as ex:
+                    print(f"[Callback Warning] Schedule callback failed: {ex}")
+            call.status = "RESOLVED"
+            call.ended_at = datetime.now(timezone.utc)
+            state.conversation_status = "COMPLETED"
+            db.commit()
+
+            return {
+                "response": cb_msg,
+                "action": "callback_scheduled",
+                "advanced": False,
+                "is_escalated": False,
+                "call_status": "RESOLVED",
+                "conversation_state": {
+                    "current_question_id": None,
+                    "questions_asked": state.questions_asked or [],
+                    "answers": state.answers or {},
+                    "missing_info": [],
+                    "conversation_status": "COMPLETED",
+                },
+            }
+
+        # -------------------------------------------------------------
         # Intent 3: Customer Not Interested
         # -------------------------------------------------------------
         if intent == "NOT_INTERESTED":
@@ -805,7 +964,7 @@ class ConversationFlowService:
             updated_answers[current_key] = "[Skipped - Refused to answer]"
 
             missing = self.calculate_missing_info(updated_answers)
-            next_q = self.get_dynamic_next_question(updated_answers, current_q.get("id") if current_q else None)
+            next_q = self.get_dynamic_next_question(updated_answers, current_q.get("id") if current_q else None, call=call)
 
             if next_q:
                 asked = list(state.questions_asked or [])
@@ -872,7 +1031,7 @@ class ConversationFlowService:
                 if corr_key == "name" and call.customer and self.is_plausible_name(corr_val):
                     call.customer.name = corr_val
 
-                next_q = self.get_dynamic_next_question(updated_answers, state.current_question_id)
+                next_q = self.get_dynamic_next_question(updated_answers, state.current_question_id, call=call)
                 missing = self.calculate_missing_info(updated_answers)
 
                 if next_q:
@@ -1010,7 +1169,7 @@ class ConversationFlowService:
                     call.customer.name = name_val
 
         # Determine next question dynamically based on domain and unanswered slots
-        next_q = self.get_dynamic_next_question(updated_answers, current_q.get("id") if current_q else None)
+        next_q = self.get_dynamic_next_question(updated_answers, current_q.get("id") if current_q else None, call=call)
         missing = self.calculate_missing_info(updated_answers)
 
         if next_q:

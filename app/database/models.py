@@ -132,3 +132,27 @@ class ConversationState(Base):
     # Relationships
     call = relationship("Call", back_populates="conversation_state")
 
+
+class CallbackRequest(Base):
+    __tablename__ = "callback_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    phone_number = Column(String(50), nullable=False, index=True)
+    customer_name = Column(String(255), nullable=True)
+    scheduled_time = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(50), default="scheduled", nullable=False)  # scheduled, in_progress, completed, cancelled, retry_pending
+    retry_count = Column(Integer, default=0, nullable=False)
+    max_retries = Column(Integer, default=3, nullable=False)
+    retry_interval_minutes = Column(Integer, default=30, nullable=False)
+    reason = Column(String(255), nullable=True)  # customer_requested, unanswered_retry, busy_retry, user_scheduled
+    call_id = Column(Integer, ForeignKey("calls.id"), nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    # Relationships
+    customer = relationship("Customer")
+    call = relationship("Call")
+
+

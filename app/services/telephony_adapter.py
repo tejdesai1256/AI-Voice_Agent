@@ -289,6 +289,8 @@ class MockTelephonyAdapter(TelephonyAdapter):
             "no_answer": "no_answer",
             "canceled": "canceled",
             "cancelled": "canceled",
+            "rejected": "failed",
+            "timeout": "no_answer",
             "human_transferred": "human_transferred",
         }
         return mapping.get(s, "in_progress")
@@ -438,6 +440,9 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                     if res.status_code == 401:
                         error_type = "AUTH_ERROR"
                         detail = "Exotel authentication failed (HTTP 401): Invalid API Key or Token."
+                    elif res.status_code == 402 or any(term in lowered for term in ["balance", "credit", "recharge", "funds", "payment required"]):
+                        error_type = "INSUFFICIENT_CREDITS"
+                        detail = f"Exotel account balance insufficient: {raw_msg_str or 'Please recharge your Exotel calling credits before placing outbound calls.'}"
                     elif res.status_code == 403:
                         if "kyc" in lowered:
                             error_type = "KYC_RESTRICTION"
@@ -452,9 +457,22 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
                         elif any(term in lowered for term in ["trial", "verified number", "whitelisted"]):
                             error_type = "TRIAL_RESTRICTION"
                             detail = f"Exotel trial account restriction: {raw_msg_str}. In trial mode, calls are restricted to verified numbers."
+                        elif any(term in lowered for term in ["balance", "credit", "recharge", "funds"]):
+                            error_type = "INSUFFICIENT_CREDITS"
+                            detail = f"Exotel account balance insufficient: {raw_msg_str or 'Please recharge your Exotel calling credits.'}"
                         else:
                             error_type = "POLICY_RESTRICTION"
                             detail = f"Exotel policy restriction (HTTP 403): {raw_msg_str or 'Access Forbidden'}"
+                    elif res.status_code == 400:
+                        error_type = "BAD_REQUEST"
+                        if any(term in lowered for term in ["callerid", "caller_id", "from", "virtual number"]):
+                            error_type = "INVALID_CALLER_ID"
+                            detail = f"Invalid Exotel Caller ID or virtual number: {raw_msg_str}"
+                        elif any(term in lowered for term in ["number", "to", "phone"]):
+                            error_type = "INVALID_PHONE_NUMBER"
+                            detail = f"Invalid destination phone number for carrier: {raw_msg_str}"
+                        else:
+                            detail = f"Exotel invalid request (HTTP 400): {raw_msg_str}"
                     elif res.status_code == 429:
                         error_type = "RATE_LIMIT"
                         detail = "Exotel rate limit exceeded (HTTP 429). Please wait before retrying."
@@ -637,6 +655,8 @@ class ExotelTelephonyAdapter(TelephonyAdapter):
             "no_answer": "no_answer",
             "canceled": "canceled",
             "cancelled": "canceled",
+            "rejected": "failed",
+            "timeout": "no_answer",
             "human_transferred": "human_transferred",
             "escalated": "human_transferred",
         }

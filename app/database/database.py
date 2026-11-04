@@ -70,6 +70,10 @@ def ensure_schema_migrations(target_engine=None):
         if "conversation_states" not in inspector.get_table_names():
             from app.database.models import ConversationState
             ConversationState.__table__.create(bind=engine_to_use, checkfirst=True)
+
+        if "callback_requests" not in inspector.get_table_names():
+            from app.database.models import CallbackRequest
+            CallbackRequest.__table__.create(bind=engine_to_use, checkfirst=True)
     except Exception as e:
         print(f"[DB Notice] Schema check: {e}")
 

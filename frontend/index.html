@@ -1825,6 +1825,19 @@
                             <div style="margin-top: 0.75rem; font-size: 0.8125rem;">
                                 <strong style="color: var(--color-text-secondary);">Language Routing:</strong> <span id="telephony-active-lang" style="font-weight: 600; color: var(--color-primary);">Pending IVR</span>
                             </div>
+
+                            <!-- Real-Time Telephony Transcript -->
+                            <div style="margin-top: 1rem; border-top: 1px solid var(--color-border); padding-top: 0.75rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <strong style="font-size: 0.8125rem; color: var(--color-text);">📝 Live Phone Conversation Transcript:</strong>
+                                    <span id="telephony-transcript-count" class="badge badge-gray">0 messages</span>
+                                </div>
+                                <div id="telephony-live-transcript-box" class="transcript-container" style="max-height: 220px; min-height: 100px; background: var(--color-surface-subtle); border-radius: var(--radius-control); padding: 0.75rem; overflow-y: auto;">
+                                    <div style="text-align: center; color: var(--color-text-muted); font-size: 0.8rem; padding: 1rem;">
+                                        Waiting for call connection and customer speech...
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Telephony Call History -->
@@ -1857,6 +1870,42 @@
                                 <div class="empty-icon">📱</div>
                                 <div class="empty-title">No telephony calls yet</div>
                                 <div class="empty-desc">Outbound phone calls dialed to real phones will appear here.</div>
+                            </div>
+                        </div>
+
+                        <!-- Scheduled Callbacks & Retry Queue -->
+                        <div class="card-header" style="margin-top: 1.5rem;">
+                            <div>
+                                <h3 class="card-title">Scheduled Callbacks & Retry Queue</h3>
+                                <p class="card-desc">Customer requested callbacks & automated retries for unanswered/busy phone calls</p>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-primary btn-sm" onclick="promptScheduleCallback()">+ Schedule Callback</button>
+                                <button class="btn btn-secondary btn-sm" onclick="loadTelephonyCallbacks()">🔄 Refresh Queue</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Phone Number</th>
+                                        <th>Customer</th>
+                                        <th>Scheduled Time</th>
+                                        <th>Status</th>
+                                        <th>Retries</th>
+                                        <th>Reason</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="telephony-callbacks-tbody">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                            <div id="telephony-callbacks-empty" class="empty-state hidden">
+                                <div class="empty-icon">⏰</div>
+                                <div class="empty-title">No scheduled callbacks</div>
+                                <div class="empty-desc">Pending callbacks and retry attempts will appear here.</div>
                             </div>
                         </div>
                     </div>
@@ -3794,6 +3843,7 @@
             populateTelephonyCustomerDropdown();
             await fetchTelephonyStatus();
             await loadTelephonyHistory();
+            await loadTelephonyCallbacks();
         }
 
         async function changeTelephonyProvider(newProvider) {
@@ -4025,6 +4075,29 @@
                     langSpan.textContent = call.language;
                 }
 
+                // Render live conversation transcript in real-time
+                const tBox = document.getElementById('telephony-live-transcript-box');
+                const tCount = document.getElementById('telephony-transcript-count');
+                if (data.transcript && data.transcript.length > 0 && tBox) {
+                    if (tCount) tCount.textContent = `${data.transcript.length} message${data.transcript.length === 1 ? '' : 's'}`;
+                    tBox.innerHTML = data.transcript.map(msg => {
+                        const isAgent = (msg.speaker || '').toLowerCase() === 'agent' || (msg.speaker || '').toLowerCase() === 'system';
+                        const bg = isAgent ? 'background: #eef2ff; border-left: 3px solid #635bff;' : 'background: #f0fdf4; border-left: 3px solid #22c55e;';
+                        const speakerLabel = isAgent ? '🤖 AI VoiceAgent' : '👤 Customer';
+                        const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+                        return `
+                            <div style="margin-bottom: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 4px; ${bg} font-size: 0.8125rem;">
+                                <div style="display: flex; justify-content: space-between; font-weight: 600; font-size: 0.72rem; color: var(--color-text-secondary); margin-bottom: 2px;">
+                                    <span>${speakerLabel}</span>
+                                    <span>${timeStr}</span>
+                                </div>
+                                <div style="color: var(--color-text); line-height: 1.35;">${escapeHtml(msg.text)}</div>
+                            </div>
+                        `;
+                    }).join('');
+                    tBox.scrollTop = tBox.scrollHeight;
+                }
+
                 const s = (call.status || '').toLowerCase();
                 statusBadge.textContent = call.status.toUpperCase();
 
@@ -4125,6 +4198,11 @@
                         errorInfo = `<div style="font-size: 0.72rem; color: var(--color-danger); font-weight: 600; margin-top: 3px;" title="${escapeHtml(c.error_code)}">⚠️ ${escapeHtml(c.error_code)}</div>`;
                     }
 
+                    let recButton = '';
+                    if (c.recording_url) {
+                        recButton = `<a href="${escapeHtml(c.recording_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="margin-left: 4px;" title="Listen to Call Recording">▶ Recording</a>`;
+                    }
+
                     tr.innerHTML = `
                         <td><strong>#${c.id}</strong></td>
                         <td><span class="badge ${c.call_type === 'OUTBOUND' ? 'badge-primary' : 'badge-warning'}">${c.call_type}</span></td>
@@ -4135,12 +4213,134 @@
                         <td style="font-size: 0.8125rem; color: var(--color-text-secondary);">${dt}</td>
                         <td>
                             <button class="btn btn-secondary btn-sm" onclick="viewCallDetails(${c.id})">🔍 Details</button>
+                            ${recButton}
                         </td>
                     `;
                     tbody.appendChild(tr);
                 });
             } catch (err) {
                 console.warn('Error loading telephony history:', err);
+            }
+        }
+
+        async function loadTelephonyCallbacks() {
+            try {
+                const res = await fetch('/api/telephony/callbacks', { headers: authHeaders() });
+                if (!res.ok) return;
+                const callbacks = await res.json();
+
+                const tbody = document.getElementById('telephony-callbacks-tbody');
+                const empty = document.getElementById('telephony-callbacks-empty');
+                if (!tbody) return;
+
+                tbody.innerHTML = '';
+                if (!callbacks || callbacks.length === 0) {
+                    if (empty) empty.classList.remove('hidden');
+                    return;
+                }
+                if (empty) empty.classList.add('hidden');
+
+                callbacks.forEach(cb => {
+                    const tr = document.createElement('tr');
+                    const schedTime = cb.scheduled_time ? new Date(cb.scheduled_time).toLocaleString() : '-';
+                    const custName = cb.customer_name || 'N/A';
+                    const retries = `${cb.retry_count} / ${cb.max_retries}`;
+
+                    let badgeClass = 'badge-warning';
+                    const st = (cb.status || '').toLowerCase();
+                    if (st === 'completed') badgeClass = 'badge-success';
+                    else if (st === 'in_progress') badgeClass = 'badge-primary';
+                    else if (['failed', 'cancelled', 'canceled'].includes(st)) badgeClass = 'badge-danger';
+
+                    let actions = '-';
+                    if (['pending', 'failed'].includes(st)) {
+                        actions = `
+                            <button class="btn btn-primary btn-sm" onclick="callCallbackNow(${cb.id})" title="Initiate Call Immediately">📞 Call Now</button>
+                            <button class="btn btn-secondary btn-sm" onclick="cancelCallback(${cb.id})" style="margin-left: 4px; color: var(--color-danger);" title="Cancel Callback">✖</button>
+                        `;
+                    }
+
+                    tr.innerHTML = `
+                        <td><strong>#${cb.id}</strong></td>
+                        <td><strong>${escapeHtml(cb.phone_number)}</strong></td>
+                        <td>${escapeHtml(custName)}</td>
+                        <td style="font-size: 0.8125rem;">${schedTime}</td>
+                        <td><span class="badge ${badgeClass}">${escapeHtml(cb.status.toUpperCase())}</span></td>
+                        <td>${retries}</td>
+                        <td style="font-size: 0.8125rem; color: var(--color-text-secondary);">${escapeHtml(cb.reason || 'unspecified')}</td>
+                        <td>${actions}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.warn('Error loading callbacks:', err);
+            }
+        }
+
+        async function promptScheduleCallback() {
+            const phone = prompt('Enter customer phone number for callback:');
+            if (!phone || phone.trim().length < 10) {
+                if (phone) alert('Please enter a valid phone number (at least 10 digits).');
+                return;
+            }
+            const minutesStr = prompt('Schedule callback in how many minutes? (e.g. 15, 30, 60)', '30');
+            const minutes = parseInt(minutesStr) || 30;
+            const name = prompt('Customer name (optional):') || '';
+
+            try {
+                const scheduledTime = new Date(Date.now() + minutes * 60000).toISOString();
+                const res = await fetch('/api/telephony/callbacks', {
+                    method: 'POST',
+                    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone_number: phone.trim(),
+                        customer_name: name.trim() || null,
+                        scheduled_time: scheduledTime,
+                        reason: 'manual'
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to schedule callback');
+                showToast(`✓ Callback scheduled for ${data.phone_number} at ${new Date(data.scheduled_time).toLocaleTimeString()}`);
+                loadTelephonyCallbacks();
+            } catch (err) {
+                showToast(`❌ Error: ${err.message}`);
+            }
+        }
+
+        async function callCallbackNow(callbackId) {
+            if (!confirm(`Initiate telephone call for callback #${callbackId} now?`)) return;
+            try {
+                const res = await fetch(`/api/telephony/callbacks/${callbackId}/call-now`, {
+                    method: 'POST',
+                    headers: authHeaders()
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to initiate callback call');
+                showToast(`✓ Call initiated for callback #${callbackId}`);
+                loadTelephonyCallbacks();
+                loadTelephonyHistory();
+                if (data.call_id) {
+                    showActiveTelephonyCard(data.call_id, data.destination, data.call_sid, data.provider);
+                }
+            } catch (err) {
+                showToast(`❌ Error: ${err.message}`);
+            }
+        }
+
+        async function cancelCallback(callbackId) {
+            if (!confirm(`Cancel scheduled callback #${callbackId}?`)) return;
+            try {
+                const res = await fetch(`/api/telephony/callbacks/${callbackId}/cancel`, {
+                    method: 'POST',
+                    headers: authHeaders()
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed to cancel callback');
+                showToast(`✓ Callback #${callbackId} cancelled`);
+                loadTelephonyCallbacks();
+            } catch (err) {
+                showToast(`❌ Error: ${err.message}`);
             }
         }
 

@@ -283,6 +283,13 @@ class TelephonyService:
                 if call.id in self.active_calls:
                     del self.active_calls[call.id]
 
+                if new_status in ("busy", "no_answer", "failed"):
+                    try:
+                        from app.services.callback_service import CallbackService
+                        CallbackService.handle_unanswered_call(db, call)
+                    except Exception as ex:
+                        print(f"[Callback Warning] Auto-retry check: {ex}")
+
             db.commit()
             return {"status": "updated", "call_id": call.id, "call_status": call.status}
 
@@ -405,9 +412,14 @@ class TelephonyService:
                     # Add simulated greeting message to conversation if empty
                     msg_count = db.query(Message).filter(Message.call_id == call_id).count()
                     if msg_count == 0:
+                        greeting_text = (
+                            "Hello! I am calling regarding your business requirements. Is this a good time to talk?"
+                            if getattr(c, "call_type", "OUTBOUND") == "OUTBOUND"
+                            else "Hello! I am your AI voice assistant. How can I help you today?"
+                        )
                         self.conversation_service.add_message(
                             db, call_id=call_id, speaker="assistant",
-                            text="Hello! I am your AI voice assistant. How can I help you today?"
+                            text=greeting_text
                         )
                         db.commit()
 

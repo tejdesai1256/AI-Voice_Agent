@@ -296,13 +296,28 @@ class TelephonyStreamManager:
                             c.status = "in_progress"
                             if call_sid and not c.provider_call_id:
                                 c.provider_call_id = call_sid
+                            c.language = "en"
                             db.commit()
 
-                    # Synthesize and play initial greeting
-                    greeting_path = os.path.join(RECORDINGS_DIR, "ivr_prompt.wav")
-                    if not os.path.exists(greeting_path):
-                        self.voice_service.tts_service.synthesize(IVR_STREAM_GREETING, greeting_path, language="en")
-                    current_playback_task = asyncio.create_task(send_audio_file(greeting_path))
+                            if getattr(c, "call_type", "").upper() == "OUTBOUND":
+                                greeting_text = self.voice_service.conversation_flow_service.get_initial_greeting_and_question(db, c)
+                                msg_count = db.query(Message).filter(Message.call_id == c.id, Message.speaker == "assistant").count()
+                                if msg_count == 0:
+                                    self.voice_service.conversation_service.add_message(
+                                        db, call_id=c.id, speaker="assistant", text=greeting_text
+                                    )
+                                    db.commit()
+                                greeting_path = os.path.join(RECORDINGS_DIR, f"tel_greeting_{call_id}.wav")
+                                try:
+                                    self.voice_service.tts_service.synthesize(greeting_text, greeting_path, language="en")
+                                    current_playback_task = asyncio.create_task(send_audio_file(greeting_path))
+                                except Exception as tts_err:
+                                    print(f"[TTS Warning] Outbound greeting synthesis: {tts_err}")
+                            else:
+                                greeting_path = os.path.join(RECORDINGS_DIR, "ivr_prompt.wav")
+                                if not os.path.exists(greeting_path):
+                                    self.voice_service.tts_service.synthesize(IVR_STREAM_GREETING, greeting_path, language="en")
+                                current_playback_task = asyncio.create_task(send_audio_file(greeting_path))
 
                 elif event_type == "media":
                     media_data = msg.get("media") or {}

@@ -99,22 +99,29 @@ class RequirementService:
 
         text = transcript.lower()
 
-        # Budget correction
-        m_b_corr = re.search(r'(?:actually|instead|correction|change|make that|update)\s+(?:the\s+)?budget(?:\s+to|\s+is)?\s*([\$₹]?\d[\d,]*(?:\s*(?:dollars?|rupees?|inr|usd|k))?)', text)
-        if m_b_corr:
-            merged["budget"] = m_b_corr.group(1).strip()
+        # 1. Budget correction
+        heur = self._heuristic_extract(transcript)
+        if heur.get("budget"):
+            merged["budget"] = heur["budget"]
 
-        # Name correction
+        m_b_corr = re.search(r'(?:actually|instead|correction|change|make that|update).*(?:budget(?:\s+to|\s+is)?|cost(?:\s+to|\s+is)?)\s*([\$₹]?\d[\d,]*(?:\s*(?:dollars?|rupees?|inr|usd|k))?)', text)
+        if m_b_corr:
+            merged["budget"] = m_b_corr.group(1).strip().strip(".,;:?!")
+
+        # 2. Name correction
+        if heur.get("customer_name"):
+            merged["customer_name"] = heur["customer_name"]
+
         m_n_corr = re.search(r'(?:actually|instead|correction|my name is actually|call me)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)', transcript, re.IGNORECASE)
         if m_n_corr:
-            candidate = m_n_corr.group(1).strip()
+            candidate = m_n_corr.group(1).strip().strip(".,;:?!")
             if candidate.lower() not in ("actually", "instead", "yes", "no"):
                 merged["customer_name"] = candidate
 
-        # Quantity / scope correction
+        # 3. Quantity / scope correction
         m_q_corr = re.search(r'(?:make that|change to|instead of\s+\d+[\w\s,]*make it|actually)\s+(\d+[\d,]*\s*(?:laptops?|desktops?|units?|items?|pcs?|licenses?))', text)
         if m_q_corr:
-            merged["quantity"] = m_q_corr.group(1).strip()
+            merged["quantity"] = m_q_corr.group(1).strip().strip(".,;:?!")
 
         return merged
 
@@ -154,7 +161,7 @@ class RequirementService:
                 re.IGNORECASE,
             )
         if m_budget:
-            b_val = m_budget.group(1).strip()
+            b_val = m_budget.group(1).strip().strip(".,;:?!")
             if b_val and any(c.isdigit() for c in b_val):
                 result["budget"] = b_val
 
