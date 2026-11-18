@@ -33,7 +33,7 @@ def get_auth_headers():
     assert login_res.status_code == 200, f"Login failed: {login_res.text}"
     token = login_res.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
-
+    
 
 def create_dummy_wav_file(filename="test.wav", content=b"RIFF1234WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data" + b"\x00" * 320):
     return (filename, io.BytesIO(content), "audio/wav")
@@ -46,7 +46,6 @@ def ensure_default_questions():
          patch("app.services.llm_service.generate_response", return_value="I am an AI assistant."):
         yield
     reset_configured_questions()
-
 
 
 # -----------------------------------------------------------------------------

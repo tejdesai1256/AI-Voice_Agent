@@ -1,0 +1,22 @@
+
+services:
+  asterisk:
+    image: andrius/asterisk:22
+    container_name: asterisk
+    restart: unless-stopped
+
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "10000-10100:10000-10100/udp"
+
+    volumes:
+      - ./asterisk/config/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/config/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./asterisk/config/rtp.conf:/etc/asterisk/rtp.conf:ro
+      - asterisk-data:/var/lib/asterisk
+      - asterisk-spool:/var/spool/asterisk
+
+volumes:
+  asterisk-data:
+  asterisk-spool:
